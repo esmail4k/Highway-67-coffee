@@ -14,6 +14,12 @@ os.environ.setdefault('ENABLE_REAL_ORDERS', '1')
 os.environ.setdefault('STAFF_USERNAME', 'admin123')
 os.environ.setdefault('OWNER_USERNAME', 'esmail')
 os.environ.setdefault('SESSION_SECRET', secrets.token_urlsafe(48))
+# Local-only preview: skip external SMS provider while bound to the computer itself.
+# In production, the security defaults require SMS 2FA for BOTH owner and staff.
+if os.environ['HOST'] not in ('127.0.0.1','localhost','::1'):
+    raise SystemExit('run_local.py is only for localhost. Deploy server.py on a secure HTTPS host with SMS configured.')
+os.environ.setdefault('REQUIRE_OWNER_SMS_2FA','0')
+os.environ.setdefault('REQUIRE_STAFF_SMS_2FA','0')
 
 print('HIGHWAY 67 COFFEE')
 print('الطلبات والفواتير والأيام تُحفظ في قاعدة بيانات هذا الجهاز.')

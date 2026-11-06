@@ -9,7 +9,9 @@ from decimal import Decimal, InvalidOperation
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 from PIL import Image, UnidentifiedImageError
 
@@ -27,9 +29,16 @@ STAFF_PASS=os.environ.get('STAFF_PASSWORD','')
 OWNER_USER=os.environ.get('OWNER_USERNAME','esmail')
 OWNER_PASS=os.environ.get('OWNER_PASSWORD','')
 SECRET=os.environ.get('SESSION_SECRET','')
+OWNER_PHONE_E164=os.environ.get('OWNER_PHONE_E164','').strip()
+SMS_ACCOUNT_SID=os.environ.get('TWILIO_ACCOUNT_SID','').strip()
+SMS_AUTH_TOKEN=os.environ.get('TWILIO_AUTH_TOKEN','').strip()
+SMS_VERIFY_SERVICE_SID=os.environ.get('TWILIO_VERIFY_SERVICE_SID','').strip()
+REQUIRE_OWNER_SMS_2FA=os.environ.get('REQUIRE_OWNER_SMS_2FA','1')=='1'
+REQUIRE_STAFF_SMS_2FA=os.environ.get('REQUIRE_STAFF_SMS_2FA','1')=='1'
 UAE=ZoneInfo('Asia/Dubai')
 LOCK=threading.RLock()
 ATTEMPTS=defaultdict(deque)
+PBKDF2_ITERATIONS=320000
 # Placeholder pricing follows the user's *visual reference*, and remains explicitly unapproved.
 SEED=[('piccolo','بيكولو','Hot Drinks',18,'hot.webp'),('cortado','كورتادو','Hot Drinks',20,'hot.webp'),('flat','فلات وايت','Hot Drinks',22,'hot.webp'),('latte','لاتيه','Hot Drinks',24,'hot.webp'),('cap','كابتشينو','Hot Drinks',24,'hot.webp'),('americano','أمريكانو','Hot Drinks',18,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',26,'hot.webp'),('mojito','موهيتو','Cold Drinks',26,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',25,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',24,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',26,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',24,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',20,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',26,'iced.webp'),('cheese','كرواسون جبن','Croissants',18,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',20,'nutella.webp'),('chips','كرواسون شيبس','Croissants',20,'chips.webp')]
 CATEGORIES={'Hot Drinks','Cold Drinks','Croissants','Desserts','Other'}
@@ -45,6 +54,37 @@ def con():
 
 def add_column(db,table,col,definition):
     if col not in [row['name'] for row in db.execute(f'PRAGMA table_info({table})')]:db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
+
+def hash_staff_password(password):
+    salt=secrets.token_bytes(18)
+    digest=hashlib.pbkdf2_hmac('sha256',password.encode('utf-8'),salt,PBKDF2_ITERATIONS)
+    return salt.hex(),digest.hex()
+
+def verify_staff_password(password,salt_hex,digest_hex):
+    try:
+        actual=hashlib.pbkdf2_hmac('sha256',password.encode('utf-8'),bytes.fromhex(salt_hex),PBKDF2_ITERATIONS)
+        return hmac.compare_digest(actual,bytes.fromhex(digest_hex))
+    except (ValueError,TypeError):return False
+
+def twilio_ready():
+    return bool(re.fullmatch(r'\+[1-9]\d{7,14}',OWNER_PHONE_E164) and SMS_ACCOUNT_SID and SMS_AUTH_TOKEN and SMS_VERIFY_SERVICE_SID)
+
+def twilio_call(endpoint,fields):
+    # Only the server talks to Twilio. Credentials and the owner's number never reach the browser.
+    auth=base64.b64encode((SMS_ACCOUNT_SID+':'+SMS_AUTH_TOKEN).encode()).decode()
+    req=Request('https://verify.twilio.com/v2/Services/'+SMS_VERIFY_SERVICE_SID+'/'+endpoint,
+        data=urlencode(fields).encode(),headers={'Authorization':'Basic '+auth,'Content-Type':'application/x-www-form-urlencoded'},method='POST')
+    try:
+        with urlopen(req,timeout=12) as response:return json.loads(response.read(16384))
+    except (HTTPError,URLError,TimeoutError,ValueError,OSError) as exc:
+        # Do not log response bodies: some APIs may include contact details.
+        raise RuntimeError('تعذر إرسال/التحقق من رسالة SMS، راجع إعدادات الخدمة') from None
+
+def send_owner_sms():
+    return twilio_call('Verifications',{'To':OWNER_PHONE_E164,'Channel':'sms'}).get('status')=='pending'
+
+def check_owner_sms(code):
+    return twilio_call('VerificationCheck',{'To':OWNER_PHONE_E164,'Code':code}).get('status')=='approved'
 
 def init():
     with con() as d:
@@ -68,13 +108,25 @@ def init():
           days TEXT NOT NULL DEFAULT '[]',start_time TEXT NOT NULL DEFAULT '00:00',end_time TEXT NOT NULL DEFAULT '23:59',
           start_at TEXT,end_at TEXT,discount_percent INTEGER NOT NULL DEFAULT 0,enabled INTEGER NOT NULL DEFAULT 1);
         CREATE INDEX IF NOT EXISTS orders_by_shift ON orders(shift_id,created_at DESC);
+        CREATE TABLE IF NOT EXISTS staff_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL UNIQUE, salt TEXT NOT NULL, digest TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, last_login_at TEXT);
+        CREATE TABLE IF NOT EXISTS login_challenges (id TEXT PRIMARY KEY,role TEXT NOT NULL,
+          username TEXT NOT NULL,staff_id INTEGER,expires_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
+        CREATE INDEX IF NOT EXISTS challenge_expiry ON login_challenges(expires_at);
         ''')
         # Safe migration from v4 if its database is supplied in DATA_DIR.
         add_column(d,'products','discount_percent','INTEGER NOT NULL DEFAULT 0')
         add_column(d,'products','promo_only','INTEGER NOT NULL DEFAULT 0')
         for col,ddl in [('label',"TEXT NOT NULL DEFAULT ''"),('notes',"TEXT NOT NULL DEFAULT ''"),('hidden_for_staff','INTEGER NOT NULL DEFAULT 0')]:add_column(d,'shifts',col,ddl)
         add_column(d,'order_items','original_fils','INTEGER')
+        add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
+        # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
+        if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
+            salt,digest=hash_staff_password(STAFF_PASS)
+            d.execute('INSERT INTO staff_accounts(username,salt,digest,created_at) VALUES(?,?,?,?)',
+                (STAFF_USER,salt,digest,utcnow()))
 init()
 
 def row(x):return dict(x) if x is not None else None
@@ -172,7 +224,7 @@ def textfield(d,key,max_len,required=False):
     return value.strip()
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='Highway67/5'
+    server_version='Highway67/7'
     def log_message(self,fmt,*args):print('%s %s'%(self.address_string(),fmt%args),flush=True)
     def common(self):
         self.send_header('Cache-Control','no-store')
@@ -194,10 +246,17 @@ class Handler(BaseHTTPRequestHandler):
             return data if isinstance(data,dict) else None
         except (ValueError,UnicodeError):return None
     def secure_suffix(self):return '; Secure' if os.environ.get('FORCE_HTTPS')=='1' or self.headers.get('X-Forwarded-Proto')=='https' else ''
-    def token(self,role):
-        val=role+'.'+str(int(time.time()+12*3600))+'.'+secrets.token_hex(16)
-        sig=hmac.new(SECRET.encode(),val.encode(),hashlib.sha256).hexdigest()
-        return val+'.'+sig
+    def token(self,role,staff_id=None):
+        expires=str(int(time.time()+12*3600))
+        parts=[role,expires]
+        if role=='staff':
+            with con() as d:
+                record=d.execute('SELECT session_version FROM staff_accounts WHERE id=?',(staff_id,)).fetchone()
+            if not record:raise ValueError('Account disabled or missing')
+            parts.extend([str(staff_id),str(record['session_version'])])
+        parts.append(secrets.token_hex(16))
+        msg='.'.join(parts)
+        return msg+'.'+hmac.new(SECRET.encode(),msg.encode(),hashlib.sha256).hexdigest()
     def is_role(self,role):
         if not SECRET:return False
         cookies=SimpleCookie()
@@ -206,12 +265,28 @@ class Handler(BaseHTTPRequestHandler):
         value=cookies.get('hw67_'+role)
         if value is None:return False
         parts=value.value.split('.')
-        if len(parts)!=4 or parts[0]!=role:return False
+        if len(parts)!=(6 if role=='staff' else 4) or parts[0]!=role:return False
         try:
             if time.time()>int(parts[1]):return False
-            msg='.'.join(parts[:3]);sig=hmac.new(SECRET.encode(),msg.encode(),hashlib.sha256).hexdigest()
-            return hmac.compare_digest(sig,parts[3])
+            msg='.'.join(parts[:-1]);sig=hmac.new(SECRET.encode(),msg.encode(),hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(sig,parts[-1]):return False
+            if role=='staff':
+                staff_id=int(parts[2])
+                with con() as d:
+                    account=d.execute('SELECT enabled,session_version FROM staff_accounts WHERE id=?',(staff_id,)).fetchone()
+                return bool(account and account['enabled'] and account['session_version']==int(parts[3]))
+            return True
         except (ValueError,TypeError):return False
+    def login_cookie(self,role,staff_id=None):
+        return ('Set-Cookie',f'hw67_{role}={self.token(role,staff_id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200'+self.secure_suffix())
+    def login_rate_check(self,role):
+        key=(role,self.client_address[0]);now_t=time.time()
+        with LOCK:
+            queue=ATTEMPTS[key]
+            while queue and now_t-queue[0]>900:queue.popleft()
+            if len(queue)>=10:return False
+            queue.append(now_t)
+        return True
     def auth(self,role):
         if self.is_role(role):return True
         self.sendj(401,{'error':'تسجيل دخول مطلوب'});return False
@@ -252,6 +327,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self.auth('owner'):return
             with con() as d:result=[dict(p) for p in d.execute('SELECT * FROM products ORDER BY rowid')]
             return self.sendj(200,{'products':result})
+        if path=='/api/owner/staff/accounts':
+            if not self.auth('owner'):return
+            with con() as d:
+                accounts=[dict(x) for x in d.execute('SELECT id,username,enabled,created_at,last_login_at FROM staff_accounts ORDER BY id DESC')]
+            return self.sendj(200,{'accounts':accounts})
         if path=='/api/owner/promotions':
             if not self.auth('owner'):return
             with con() as d:result=[dict(p) for p in d.execute('SELECT * FROM promos ORDER BY id DESC')]
@@ -267,9 +347,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.sendj(200,result)
         if path in ('/','/staff','/staff/','/owner','/owner/'):
             path={'/':'/index.html','/staff':'/staff.html','/staff/':'/staff.html','/owner':'/owner.html','/owner/':'/owner.html'}[path]
-        # Protect files under /uploads from path traversal and private data.
-        file=(STATIC/path.lstrip('/')).resolve()
-        if not file.is_relative_to(STATIC.resolve()) or not file.is_file():return self.sendj(404,{'error':'غير موجود'})
+        # Uploaded photos live on durable DATA_DIR, not ephemeral website build files.
+        if path.startswith('/assets/uploads/'):
+            filename=path.removeprefix('/assets/uploads/')
+            if not re.fullmatch(r'[0-9a-f]{24}\.webp',filename):return self.sendj(404,{'error':'غير موجود'})
+            file=(DATA/'uploads'/filename).resolve()
+            if not file.is_relative_to((DATA/'uploads').resolve()):return self.sendj(404,{'error':'غير موجود'})
+        else:
+            file=(STATIC/path.lstrip('/')).resolve()
+            if not file.is_relative_to(STATIC.resolve()):return self.sendj(404,{'error':'غير موجود'})
+        if not file.is_file():return self.sendj(404,{'error':'غير موجود'})
         buf=file.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(file.name)[0] or 'application/octet-stream')
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
@@ -280,24 +367,111 @@ class Handler(BaseHTTPRequestHandler):
         match=re.fullmatch(r'/api/(staff|owner)/login',path)
         if match:
             role=match.group(1)
-            user=STAFF_USER if role=='staff' else OWNER_USER
-            passwd=STAFF_PASS if role=='staff' else OWNER_PASS
-            if not passwd or not SECRET:return self.sendj(503,{'error':'بيانات دخول هذا الحساب لم تُضبط على الخادم'})
-            key=(role,self.client_address[0]);now_t=time.time()
-            with LOCK:
-                queue=ATTEMPTS[key]
-                while queue and now_t-queue[0]>900:queue.popleft()
-                if len(queue)>=10:return self.sendj(429,{'error':'محاولات كثيرة، حاول لاحقاً'})
-                queue.append(now_t)
-            if not isinstance(data.get('username'),str) or not isinstance(data.get('password'),str) or not (hmac.compare_digest(user,data['username']) and hmac.compare_digest(passwd,data['password'])):
-                time.sleep(.2);return self.sendj(401,{'error':'اسم المستخدم أو كلمة المرور غير صحيحة'})
-            cookie=f'hw67_{role}={self.token(role)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200'+self.secure_suffix()
-            return self.sendj(200,{'ok':True},[('Set-Cookie',cookie)])
+            if not SECRET:return self.sendj(503,{'error':'إعدادات أمان السيرفر غير مكتملة'})
+            if not self.login_rate_check(role):return self.sendj(429,{'error':'محاولات كثيرة، حاول لاحقاً'})
+            username=data.get('username');password=data.get('password')
+            if not isinstance(username,str) or not isinstance(password,str) or len(username)>80 or len(password)>256:
+                return self.sendj(401,{'error':'بيانات الدخول غير صحيحة'})
+            staff_id=None
+            if role=='owner':
+                valid=bool(OWNER_PASS and hmac.compare_digest(OWNER_USER,username) and hmac.compare_digest(OWNER_PASS,password))
+            else:
+                with con() as d:staff=d.execute('SELECT * FROM staff_accounts WHERE username=?',(username,)).fetchone()
+                # Hash a dummy password even for nonexistent usernames; avoid easy account enumeration.
+                if staff:
+                    hashed_ok=verify_staff_password(password,staff['salt'],staff['digest'])
+                    valid=bool(staff['enabled'] and hashed_ok)
+                    staff_id=staff['id']
+                else:
+                    hashlib.pbkdf2_hmac('sha256',password.encode('utf-8'),b'not-a-real-account!',PBKDF2_ITERATIONS)
+                    valid=False
+            if not valid:
+                time.sleep(.25);return self.sendj(401,{'error':'اسم المستخدم أو كلمة المرور غير صحيحة'})
+            required=REQUIRE_OWNER_SMS_2FA if role=='owner' else REQUIRE_STAFF_SMS_2FA
+            if required:
+                if not twilio_ready():return self.sendj(503,{'error':'التحقق برسالة SMS غير مهيأ على الخادم بعد؛ لن يتم فتح لوحة الإدارة قبل ضبطه'})
+                with LOCK,con() as d:
+                    d.execute('DELETE FROM login_challenges WHERE expires_at<?',(int(time.time()),))
+                    # Limit one outstanding code per identity and limit repeated sends via login rate checks.
+                    d.execute('DELETE FROM login_challenges WHERE role=? AND username=?',(role,username))
+                    challenge=secrets.token_urlsafe(28)
+                    d.execute('INSERT INTO login_challenges(id,role,username,staff_id,expires_at) VALUES(?,?,?,?,?)',
+                        (challenge,role,username,staff_id,int(time.time())+600))
+                try:
+                    if not send_owner_sms():raise RuntimeError('تعذر إرسال رمز SMS')
+                except RuntimeError:
+                    with con() as d:d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
+                    return self.sendj(503,{'error':'تعذر إرسال رمز التحقق، حاول لاحقاً'})
+                return self.sendj(202,{'requires_verification':True,'challenge_id':challenge,
+                    'message':'أرسلنا رمز تحقق إلى هاتف المالك المسجل'})
+            # SMS may be disabled only by the operator for trusted local testing.
+            if role=='staff':
+                with con() as d:d.execute('UPDATE staff_accounts SET last_login_at=? WHERE id=?',(utcnow(),staff_id))
+            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id)])
+        match=re.fullmatch(r'/api/(staff|owner)/verify',path)
+        if match:
+            role=match.group(1)
+            challenge=data.get('challenge_id');code=data.get('code')
+            if not isinstance(challenge,str) or len(challenge)>120 or not isinstance(code,str) or not re.fullmatch(r'\d{4,10}',code):
+                return self.sendj(400,{'error':'رمز التحقق غير صحيح'})
+            if not self.login_rate_check('otp_'+role):return self.sendj(429,{'error':'محاولات كثيرة، حاول لاحقاً'})
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                c=d.execute('SELECT * FROM login_challenges WHERE id=? AND role=?',(challenge,role)).fetchone()
+                if not c or c['expires_at']<time.time() or c['attempts']>=5:
+                    return self.sendj(401,{'error':'انتهت صلاحية طلب التحقق؛ سجل الدخول من جديد'})
+                if role=='staff':
+                    staff=d.execute('SELECT enabled FROM staff_accounts WHERE id=?',(c['staff_id'],)).fetchone()
+                    if not staff or not staff['enabled']:return self.sendj(403,{'error':'هذا الحساب غير مفعل'})
+                # Count the attempt *before* making a third-party call.
+                d.execute('UPDATE login_challenges SET attempts=attempts+1 WHERE id=?',(challenge,))
+                staff_id=c['staff_id']
+                d.commit()
+            if not twilio_ready():return self.sendj(503,{'error':'خدمة التحقق غير متاحة'})
+            try:approved=check_owner_sms(code)
+            except RuntimeError:return self.sendj(503,{'error':'تعذر فحص رمز التحقق، حاول لاحقاً'})
+            if not approved:return self.sendj(401,{'error':'رمز التحقق غير صحيح'})
+            with LOCK,con() as d:
+                d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
+                if role=='staff':d.execute('UPDATE staff_accounts SET last_login_at=? WHERE id=?',(utcnow(),staff_id))
+            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id)])
         match=re.fullmatch(r'/api/(staff|owner)/logout',path)
         if match:
             role=match.group(1)
             return self.sendj(200,{'ok':True},[('Set-Cookie',f'hw67_{role}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'+self.secure_suffix())])
+        if path=='/api/owner/staff/accounts/create':
+            if not self.auth('owner'):return
+            username=data.get('username');password=data.get('password')
+            if not isinstance(username,str) or not re.fullmatch(r'[a-zA-Z0-9._-]{3,32}',username) or not isinstance(password,str) or len(password)<10 or len(password)>128:
+                return self.sendj(400,{'error':'اسم المستخدم 3–32 حرفاً إنجليزياً أو رقماً، وكلمة المرور 10 أحرف على الأقل'})
+            salt,digest=hash_staff_password(password)
+            try:
+                with LOCK,con() as d:
+                    d.execute('INSERT INTO staff_accounts(username,salt,digest,created_at) VALUES(?,?,?,?)',(username,salt,digest,utcnow()))
+            except sqlite3.IntegrityError:return self.sendj(409,{'error':'اسم المستخدم مستخدم مسبقاً'})
+            return self.sendj(201,{'ok':True})
+        match=re.fullmatch(r'/api/owner/staff/accounts/(\d+)/(toggle|reset-password)',path)
+        if match:
+            if not self.auth('owner'):return
+            ident=int(match.group(1));action=match.group(2)
+            with LOCK,con() as d:
+                acc=d.execute('SELECT id FROM staff_accounts WHERE id=?',(ident,)).fetchone()
+                if not acc:return self.sendj(404,{'error':'الموظف غير موجود'})
+                if action=='toggle':
+                    enabled=data.get('enabled')
+                    if not isinstance(enabled,bool):return self.sendj(400,{'error':'حالة الحساب غير صحيحة'})
+                    d.execute('UPDATE staff_accounts SET enabled=?,session_version=session_version+1 WHERE id=?',(int(enabled),ident))
+                else:
+                    password=data.get('password')
+                    if not isinstance(password,str) or len(password)<10 or len(password)>128:
+                        return self.sendj(400,{'error':'كلمة المرور الجديدة لا تقل عن 10 أحرف'})
+                    salt,digest=hash_staff_password(password)
+                    d.execute('UPDATE staff_accounts SET salt=?,digest=?,session_version=session_version+1 WHERE id=?',(salt,digest,ident))
+                # Revoke any pending verification if account was disabled or reset.
+                d.execute('DELETE FROM login_challenges WHERE role=? AND staff_id=?',('staff',ident))
+            return self.sendj(200,{'ok':True})
         if path=='/api/orders':
+            if not self.login_rate_check('customer_order'):return self.sendj(429,{'error':'طلبات كثيرة من نفس الاتصال، حاول بعد قليل'})
             if not REAL_ORDERS:return self.sendj(503,{'error':'استقبال الطلبات غير مفعّل على هذا الخادم'})
             try:
                 name=textfield(data,'customer_name',65,True);phone=textfield(data,'phone',20,True)
@@ -445,8 +619,8 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 old=d.execute('SELECT image FROM products WHERE id=?',(pid,)).fetchone()
                 if old is None:return self.sendj(404,{'error':'المنتج غير موجود'})
-                fname='uploads/'+secrets.token_hex(12)+'.webp';(ASSETS/'uploads').mkdir(exist_ok=True)
-                (ASSETS/fname).write_bytes(out.getvalue())
+                fname='uploads/'+secrets.token_hex(12)+'.webp';(DATA/'uploads').mkdir(exist_ok=True)
+                (DATA/fname).write_bytes(out.getvalue())
                 d.execute('UPDATE products SET image=? WHERE id=?',(fname,pid));d.commit()
             return self.sendj(200,{'ok':True,'image':fname})
         if path=='/api/owner/promo/save':
@@ -487,7 +661,13 @@ class Handler(BaseHTTPRequestHandler):
         return self.sendj(404,{'error':'الإجراء غير موجود'})
 
 if __name__=='__main__':
-    if not STAFF_PASS or not OWNER_PASS or len(SECRET)<32:
-        raise SystemExit('Set STAFF_PASSWORD, OWNER_PASSWORD and a 32+ character SESSION_SECRET before running the server.')
+    if not OWNER_PASS or len(SECRET)<32:
+        raise SystemExit('Set OWNER_PASSWORD and a 32+ character SESSION_SECRET before running the server.')
+    if (REQUIRE_OWNER_SMS_2FA or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
+        print('SECURITY NOTICE: SMS 2FA is required but not configured. Management login will be blocked until configured.',flush=True)
+    if HOST not in ('127.0.0.1','localhost','::1') and not REQUIRE_OWNER_SMS_2FA:
+        raise SystemExit('Owner SMS 2FA is mandatory for public-facing service. Set REQUIRE_OWNER_SMS_2FA=1.')
+    if REAL_ORDERS and os.environ.get('RENDER') and not os.environ.get('DATA_DIR'):
+        raise SystemExit('A durable DATA_DIR must be configured for real orders on Render.')
     print(f'HIGHWAY 67 running at http://{HOST}:{PORT}; orders_enabled={REAL_ORDERS}',flush=True)
     ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()

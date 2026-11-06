@@ -1,7 +1,20 @@
 'use strict';
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes)}
-$('loginForm').onsubmit=async e=>{e.preventDefault();$('loginError').textContent='';$('loginBtn').disabled=true;try{await api('/api/staff/login','POST',{username:$('username').value,password:$('password').value});$('password').value='';loginVisible(false);await refresh()}catch(err){$('loginError').textContent=err.message}finally{$('loginBtn').disabled=false}};
+let currentChallenge=null;
+function otpStep(challenge){currentChallenge=challenge;$('loginForm').classList.add('hidden');$('verifyForm').classList.remove('hidden');$('otpCode').focus()}
+function resetLoginStep(){currentChallenge=null;$('loginForm').classList.remove('hidden');$('verifyForm').classList.add('hidden');$('otpCode').value='';$('password').value=''}
+$('backToLogin').onclick=()=>{resetLoginStep();$('loginError').textContent=''};
+$('loginForm').onsubmit=async e=>{e.preventDefault();$('loginError').textContent='';$('loginBtn').disabled=true;try{
+ const out=await api('/api/staff/login','POST',{username:$('username').value,password:$('password').value});
+ if(out.requires_verification){otpStep(out.challenge_id);$('loginError').textContent=out.message||'أدخل رمز التحقق المرسل إلى هاتف المالك';return}
+ resetLoginStep();loginVisible(false);await refresh()
+ }catch(e){$('loginError').textContent=e.message}finally{$('loginBtn').disabled=false}};
+$('verifyForm').onsubmit=async e=>{e.preventDefault();if(!currentChallenge)return;$('loginError').textContent='';$('verifyBtn').disabled=true;try{
+ await api('/api/staff/verify','POST',{challenge_id:currentChallenge,code:$('otpCode').value.trim()});
+ resetLoginStep();loginVisible(false);await refresh()
+ }catch(e){$('loginError').textContent=e.message}finally{$('verifyBtn').disabled=false}};
+
 $('logout').onclick=async()=>{await api('/api/staff/logout','POST',{}).catch(()=>{});data=null;loginVisible(true)};
 async function boot(){try{const r=await api('/api/staff/session');loginVisible(!r.authenticated);if(r.authenticated)await refresh()}catch{loginVisible(true)}}
 async function refresh(){if(updating||!$('loginScreen').classList.contains('hidden'))return;updating=true;try{let latest=await api('/api/staff/overview');if(data){const before=new Set((data.orders||[]).map(x=>x.id));const added=(latest.orders||[]).filter(x=>!before.has(x.id));$('refreshLabel').textContent=added.length?`وصل ${added.length} طلب جديد`:'تحديث تلقائي كل 5 ثوانٍ'}data=latest;render()}catch(e){if(e.message.includes('دخول'))loginVisible(true);else $('refreshLabel').textContent=e.message}finally{updating=false}}
