@@ -287,6 +287,15 @@ class Handler(BaseHTTPRequestHandler):
             if len(queue)>=10:return False
             queue.append(now_t)
         return True
+    def order_rate_check(self):
+        # Cafe customers may share one network/IP. Allow normal peak traffic.
+        key=('customer_order',self.client_address[0]);now_t=time.time()
+        with LOCK:
+            queue=ATTEMPTS[key]
+            while queue and now_t-queue[0]>60:queue.popleft()
+            if len(queue)>=80:return False
+            queue.append(now_t)
+        return True
     def auth(self,role):
         if self.is_role(role):return True
         self.sendj(401,{'error':'تسجيل دخول مطلوب'});return False
@@ -471,7 +480,7 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('DELETE FROM login_challenges WHERE role=? AND staff_id=?',('staff',ident))
             return self.sendj(200,{'ok':True})
         if path=='/api/orders':
-            if not self.login_rate_check('customer_order'):return self.sendj(429,{'error':'طلبات كثيرة من نفس الاتصال، حاول بعد قليل'})
+            if not self.order_rate_check():return self.sendj(429,{'error':'طلبات كثيرة من نفس الاتصال، حاول بعد قليل'})
             if not REAL_ORDERS:return self.sendj(503,{'error':'استقبال الطلبات غير مفعّل على هذا الخادم'})
             try:
                 name=textfield(data,'customer_name',65,True);phone=textfield(data,'phone',20,True)
