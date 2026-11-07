@@ -43,7 +43,7 @@ LOCK=threading.RLock()
 ATTEMPTS=defaultdict(deque)
 PBKDF2_ITERATIONS=320000
 # Confirmed Highway 67 menu prices (AED), November 2026.
-SEED=[('espresso','إسبريسو','Hot Drinks',12.00,'hot.webp'),('piccolo','بيكولو','Hot Drinks',15.99,'hot.webp'),('cortado','كورتادو','Hot Drinks',12.50,'hot.webp'),('flat','فلات وايت','Hot Drinks',13.50,'hot.webp'),('latte','لاتيه','Hot Drinks',15.99,'hot.webp'),('cap','كابتشينو','Hot Drinks',13.50,'hot.webp'),('americano','أمريكانو','Hot Drinks',12.99,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',16.99,'hot.webp'),('mojito','موهيتو','Cold Drinks',15.99,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',15.99,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',15.99,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',16.99,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',15.99,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',15.99,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',15.99,'iced.webp'),('cheese','كرواسون جبن','Croissants',12,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',13,'nutella.webp'),('chips','كرواسون شيبس','Croissants',13,'chips.webp')]
+SEED=[('espresso','إسبريسو','Hot Drinks',12.00,'hot.webp'),('cortado','كورتادو','Hot Drinks',12.50,'hot.webp'),('flat','فلات وايت','Hot Drinks',13.50,'hot.webp'),('latte','لاتيه','Hot Drinks',15.99,'hot.webp'),('cap','كابتشينو','Hot Drinks',13.50,'hot.webp'),('americano','أمريكانو','Hot Drinks',12.99,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',16.99,'hot.webp'),('mojito','موهيتو','Cold Drinks',15.99,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',15.99,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',15.99,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',16.99,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',15.99,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',15.99,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',15.99,'iced.webp'),('plain','كرواسون سادة','Croissants',10,'cheese.webp'),('cheese','كرواسون جبن','Croissants',12,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',12,'nutella.webp'),('chips','كرواسون جبس جبن','Croissants',13,'chips.webp')]
 CATEGORIES={'Hot Drinks','Cold Drinks','Croissants','Desserts','Other'}
 
 def utcnow():return datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -120,6 +120,19 @@ def init():
         add_column(d,'products','promo_only','INTEGER NOT NULL DEFAULT 0')
         for col,ddl in [('label',"TEXT NOT NULL DEFAULT ''"),('notes',"TEXT NOT NULL DEFAULT ''"),('hidden_for_staff','INTEGER NOT NULL DEFAULT 0')]:add_column(d,'shifts',col,ddl)
         add_column(d,'order_items','original_fils','INTEGER')
+        add_column(d,'order_items','syrup','TEXT NOT NULL DEFAULT \'\'')
+        d.executescript('''
+        CREATE TABLE IF NOT EXISTS order_feedback_tokens(
+            order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
+            token_digest TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS order_feedback(
+            order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
+            liked INTEGER CHECK(liked IN (0,1) OR liked IS NULL),
+            reasons TEXT NOT NULL DEFAULT '[]',
+            service_score INTEGER CHECK(service_score BETWEEN 1 AND 5 OR service_score IS NULL),
+            comment TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+        ''')
+
         add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
         # Apply this requested price change once per database. Later owner edits remain intact.
@@ -146,6 +159,17 @@ def init():
                            (1350,'cap'),(1299,'americano')])
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(price_key,))
 
+
+        # Explicit new menu update, applied once to preserve all historical order snapshots.
+        menu_key='new_croissants_remove_piccolo_20261107'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(menu_key,)).fetchone():
+            d.execute('UPDATE products SET available=0 WHERE id=?',('piccolo',))
+            d.execute('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',
+                      ('plain','كرواسون سادة','Croissants',1000,'cheese.webp'))
+            d.execute('UPDATE products SET price_fils=1200 WHERE id=?',('cheese',))
+            d.execute('UPDATE products SET price_fils=1200 WHERE id=?',('nutella',))
+            d.execute('UPDATE products SET price_fils=1300,name=? WHERE id=?',('كرواسون جبس جبن','chips'))
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
         # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
         if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
             salt,digest=hash_staff_password(STAFF_PASS)
@@ -244,6 +268,7 @@ def catalog(d):
     active_ids={p['product_id'] for p in active}
     for p in products:
         if not p['available'] or (p['promo_only'] and p['id'] not in active_ids):continue
+        if p['id']=='piccolo':continue
         p['effective_discount']=max(p['discount_percent'],linked.get(p['id'],0))
         p['final_price_fils']=(p['price_fils']*(100-p['effective_discount'])+50)//100
         shown.append(p)
@@ -412,6 +437,13 @@ class Handler(BaseHTTPRequestHandler):
                 result=shift_summary(d,shift)
                 result['shifts']=shift_cards(d,'staff')
             return self.sendj(200,result)
+        if path=='/api/staff/feedback':
+            if not self.auth('staff'):return
+            with con() as d:
+                rows=[dict(x) for x in d.execute(
+                    'SELECT order_id,liked,reasons,service_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 40')]
+                for x in rows:x['reasons']=json.loads(x['reasons'])
+            return self.sendj(200,{'feedback':rows})
         if path=='/api/staff/shifts':
             if not self.auth('staff'):return
             with con() as d:return self.sendj(200,{'shifts':shift_cards(d,'staff')})
@@ -460,7 +492,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
         path=urlsplit(self.path).path
-        if MENU_ONLY and path!='/api/orders' and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
+        if MENU_ONLY and path not in ('/api/orders','/api/feedback') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
             return self.sendj(503,{'error':'هذه الخدمة متوقفة حالياً'})
         if not self.same_origin():return self.sendj(403,{'error':'مصدر الطلب غير مسموح'})
         data=self.readj()
@@ -592,13 +624,54 @@ class Handler(BaseHTTPRequestHandler):
                         return self.sendj(400,{'error':'بيانات المنتج غير صحيحة'})
                     p=allowed.get(x['id'])
                     if not p:return self.sendj(400,{'error':'منتج غير متاح للطلب الآن'})
-                    lines.append((p,x['qty']));total+=p['final_price_fils']*x['qty']
+                    syrup=x.get('syrup','')
+                    if not isinstance(syrup,str) or syrup not in ('','caramel'):
+                        return self.sendj(400,{'error':'الإضافة غير متوفرة'})
+                    if syrup and p['id'] not in ('spanish','icedspanish'):
+                        return self.sendj(400,{'error':'هذه الإضافة غير متاحة لهذا المشروب'})
+                    lines.append((p,x['qty'],syrup));total+=p['final_price_fils']*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
                 cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
                 oid=cursor.lastrowid
-                for p,qty in lines:d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils) VALUES(?,?,?,?,?,?,?)',(oid,p['id'],p['name'],p['image'],qty,p['final_price_fils'],p['price_fils']))
+                for p,qty,syrup in lines:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup) VALUES(?,?,?,?,?,?,?,?)',
+                              (oid,p['id'],p['name'],p['image'],qty,p['final_price_fils'],p['price_fils'],syrup))
+                feedback_token=secrets.token_urlsafe(24)
+                d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
+                          (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
                 d.commit()
-            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total})
+            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total,'feedback_token':feedback_token})
+        if path=='/api/feedback':
+            if not self.order_rate_check():
+                return self.sendj(429,{'error':'حاول مرة ثانية بعد قليل'})
+            order_id=data.get('order_id');token=data.get('feedback_token')
+            liked=data.get('liked');reasons=data.get('reasons',[])
+            score=data.get('service_score');comment=data.get('comment','')
+            if (type(order_id)!=int or order_id<1 or not isinstance(token,str) or len(token)>160
+                    or liked not in (None,True,False) or not isinstance(reasons,list)
+                    or len(reasons)>5 or not isinstance(comment,str) or len(comment)>240
+                    or (score is not None and (type(score)!=int or not 1<=score<=5))):
+                return self.sendj(400,{'error':'الرجاء مراجعة التقييم'})
+            choices={'too_sweet','not_hot','taste','missing','presentation','other'}
+            if any(not isinstance(t,str) or t not in choices for t in reasons) or len(set(reasons))!=len(reasons):
+                return self.sendj(400,{'error':'خيار التقييم غير صحيح'})
+            if liked is not False and reasons:
+                return self.sendj(400,{'error':'أسباب عدم الرضا تظهر عند اختيار لم يعجبني'})
+            if liked is None and score is None and not comment.strip():
+                return self.sendj(400,{'error':'اختر تقييم واحد على الأقل'})
+            digest=hashlib.sha256(token.encode()).hexdigest()
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                saved=d.execute('SELECT token_digest FROM order_feedback_tokens WHERE order_id=?',(order_id,)).fetchone()
+                if not saved or not hmac.compare_digest(saved['token_digest'],digest):
+                    return self.sendj(403,{'error':'رابط التقييم غير صالح'})
+                if d.execute('SELECT 1 FROM order_feedback WHERE order_id=?',(order_id,)).fetchone():
+                    return self.sendj(409,{'error':'تم تسجيل تقييمك بالفعل'})
+                d.execute('INSERT INTO order_feedback(order_id,liked,reasons,service_score,comment,created_at) VALUES(?,?,?,?,?,?)',
+                          (order_id,int(liked) if liked is not None else None,json.dumps(reasons),score,comment.strip(),utcnow()))
+                d.execute('DELETE FROM order_feedback_tokens WHERE order_id=?',(order_id,))
+                d.commit()
+            return self.sendj(201,{'ok':True})
         if path=='/api/staff/shift/start':
             if not self.auth('staff'):return
             with LOCK,con() as d:
