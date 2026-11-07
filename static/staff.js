@@ -75,7 +75,7 @@ async function loadFeedback(){
    const feeling=x.liked===1?'😍 أعجبهم':x.liked===0?'😕 يحتاج تحسين':'— بدون تقييم للطعم';
    const reasons=(x.reasons||[]).map(r=>feedbackReasonNames[r]||r).join(' · ');
    const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
-   return `<article class="review-item"><header><strong>#${Number(x.order_id)} · ${feeling}</strong><small>${when(x.created_at)}</small></header>
+   return `<article class="review-item"><div class="review-head"><strong>#${Number(x.order_id)} · ${feeling}</strong><small>${when(x.created_at)}</small></div>
     <p><b>الخدمة:</b> <span class="review-stars">${stars}</span></p>
     ${reasons?`<p>${safe(reasons)}</p>`:''}
     <p>${x.comment?safe(x.comment):'الزبون ما أضاف ملاحظة'}</p></article>`;
