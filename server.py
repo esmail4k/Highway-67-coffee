@@ -24,6 +24,7 @@ DB=DATA/'highway67.sqlite3'
 PORT=int(os.environ.get('PORT','8080'))
 HOST=os.environ.get('HOST','127.0.0.1')
 REAL_ORDERS=os.environ.get('ENABLE_REAL_ORDERS','0')=='1'
+MENU_ONLY=os.environ.get('PUBLIC_MENU_ONLY','0')=='1'
 STAFF_USER=os.environ.get('STAFF_USERNAME','admin123')
 STAFF_PASS=os.environ.get('STAFF_PASSWORD','')
 OWNER_USER=os.environ.get('OWNER_USERNAME','esmail')
@@ -306,6 +307,8 @@ class Handler(BaseHTTPRequestHandler):
         except:return False
     def do_GET(self):
         path=urlsplit(self.path).path
+        if MENU_ONLY and (path in ('/staff','/staff/','/staff.html','/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift'))):
+            return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
         if path=='/api/products':
             with con() as d:products,promos=catalog(d)
@@ -370,6 +373,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
         path=urlsplit(self.path).path
+        if MENU_ONLY:return self.sendj(503,{'error':'استقبال الطلبات والإدارة متوقفان حالياً'})
         if not self.same_origin():return self.sendj(403,{'error':'مصدر الطلب غير مسموح'})
         data=self.readj()
         if data is None:return self.sendj(400,{'error':'البيانات غير صحيحة'})
@@ -670,8 +674,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.sendj(404,{'error':'الإجراء غير موجود'})
 
 if __name__=='__main__':
-    if not OWNER_PASS or len(SECRET)<32:
-        raise SystemExit('Set OWNER_PASSWORD and a 32+ character SESSION_SECRET before running the server.')
+    if (not OWNER_PASS and not MENU_ONLY) or len(SECRET)<32:
+        raise SystemExit('Set OWNER_PASSWORD for admin access and a 32+ character SESSION_SECRET before running the server.')
     if (REQUIRE_OWNER_SMS_2FA or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
         print('SECURITY NOTICE: SMS 2FA is required but not configured. Management login will be blocked until configured.',flush=True)
     if HOST not in ('127.0.0.1','localhost','::1') and not REQUIRE_OWNER_SMS_2FA:
