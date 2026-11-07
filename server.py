@@ -306,8 +306,19 @@ class Handler(BaseHTTPRequestHandler):
         try:return urlsplit(origin).netloc==self.headers.get('Host') and urlsplit(origin).scheme in ('https','http')
         except:return False
     def do_GET(self):
-        path=urlsplit(self.path).path
-        if MENU_ONLY and (path in ('/staff','/staff/','/staff.html','/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift'))):
+        parsed=urlsplit(self.path)
+        path=parsed.path
+        # QR URL stays exactly the same. A redirect to a versioned query bypasses
+        # stale in-app browser copies of the previous public menu HTML.
+        if path=='/' and parse_qs(parsed.query).get('hw67')!=['v7']:
+            self.send_response(302)
+            self.send_header('Location','/?hw67=v7')
+            self.common()
+            self.end_headers()
+            return
+        if path=='/api/version':
+            return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY})
+        if MENU_ONLY and (path in ('/staff','/staff/','/staff.html','/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version'))):
             return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
         if path=='/api/products':
