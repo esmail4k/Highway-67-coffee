@@ -106,11 +106,17 @@ function closeCustomizer(){
  $('customModal').hidden=true;$('customOverlay').hidden=true;
  document.body.style.overflow='';customizeId=null;customizeSource=null;
 }
+function updateCustomPrice(){
+ const p=products.find(x=>x.id===customizeId);
+ if(!p)return;
+ const caramel=document.querySelector('input[name="syrup"]:checked')?.value==='caramel';
+ $('customItem').textContent=p.name+' · '+money(finalPrice(p)+(caramel?100:0));
+}
 function openCustomizer(id,source){
  customizeId=id;customizeSource=source;
  const p=products.find(x=>x.id===id);if(!p)return;
- $('customItem').textContent=p.name+' · '+money(finalPrice(p));
  document.querySelector('input[name="syrup"][value=""]').checked=true;
+ updateCustomPrice();
  $('customOverlay').hidden=false;$('customModal').hidden=false;
  document.body.style.overflow='hidden';
  $('confirmCustom').focus();
@@ -129,6 +135,7 @@ function add(id,source){
 $('closeCustom').onclick=closeCustomizer;
 $('customOverlay').onclick=closeCustomizer;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('customModal').hidden)closeCustomizer()});
+document.querySelectorAll('input[name="syrup"]').forEach(r=>r.addEventListener('change',updateCustomPrice));
 $('confirmCustom').onclick=()=>{
  if(!customizeId)return;
  const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
@@ -239,12 +246,12 @@ function renderPromos(){
  $('offers').innerHTML=active.map(p=>`<article class="promoCard"><img src="${esc('/assets/'+p.image)}" alt=""><div><strong><svg class="spark" viewBox="0 0 24 24"><path d="m12 2 2.4 6.7 7 2-7 2.5L12 20l-2.5-6.8-7-2.5 7-2z"/></svg>${esc(p.title)}</strong><p>${esc(p.subtitle||'عرض خاص لمدة محدودة')}</p><div class="timer" data-until="${esc(p.expires_at)}">باقي ${remaining(p.expires_at)}</div><button type="button" data-offer="${esc(p.product_id)}" class="promoCta">شاهد المنتج</button></div></article>`).join('');
  document.querySelectorAll('[data-offer]').forEach(b=>b.onclick=()=>{selection='all';document.querySelectorAll('[data-cat]').forEach(x=>x.classList.toggle('active',x.dataset.cat==='all'));search='';$('searchInput').value='';renderCards();const item=document.querySelector('[data-add="'+b.dataset.offer+'"]');if(item){item.closest('.product').scrollIntoView({behavior:'smooth',block:'center'});item.closest('.product').style.boxShadow='0 0 0 3px #c49b6c';setTimeout(()=>item.closest('.product')&&(item.closest('.product').style.boxShadow=''),2000)}});
 }
-async function refreshShift(){try{const res=await fetch('/api/shift',{cache:'no-store'});if(!res.ok)throw Error();const s=await res.json();shopOpen=Boolean(s.open&&s.orders_enabled);$('storeStatus').textContent=shopOpen?'المقهى يستقبل الطلبات الآن — الدفع عند الاستلام':'استقبال الطلبات متوقف حالياً؛ تقدر تتصفح القائمة';renderCart()}catch{$('storeStatus').textContent='تعذر التحقق من حالة استقبال الطلبات'}}
+async function refreshShift(){try{const res=await fetch('/api/shift',{cache:'no-store'});if(!res.ok)throw Error();const s=await res.json();const previousOpen=shopOpen;shopOpen=Boolean(s.open&&s.orders_enabled);$('storeStatus').textContent=shopOpen?'المقهى يستقبل الطلبات الآن — الدفع عند الاستلام':'استقبال الطلبات متوقف حالياً؛ تقدر تتصفح القائمة';if(previousOpen!==shopOpen)renderCart()}catch{$('storeStatus').textContent='تعذر التحقق من حالة استقبال الطلبات'}}
 async function load(){try{const r=await fetch('/api/products',{cache:'no-store'});if(!r.ok)throw Error();const result=await r.json();const fresh=result.products||[];
   const oldProducts=JSON.stringify(products.map(p=>[p.id,p.available,p.price_fils,p.final_price_fils,p.name,p.image]));
   const newProducts=JSON.stringify(fresh.map(p=>[p.id,p.available,p.price_fils,p.final_price_fils,p.name,p.image]));
   products=fresh;promotions=result.promotions||[];
-  if(oldProducts!==newProducts)renderCards();
-  renderCart();renderPromos();await refreshShift()}catch(err){$('sections').innerHTML='<p class="blank">تعذر تحميل المنتجات. حدّث الصفحة وحاول مرة ثانية.</p>'}}
+  if(oldProducts!==newProducts){renderCards();renderCart()}
+  renderPromos();await refreshShift()}catch(err){$('sections').innerHTML='<p class="blank">تعذر تحميل المنتجات. حدّث الصفحة وحاول مرة ثانية.</p>'}}
 setInterval(()=>{document.querySelectorAll('[data-until]').forEach(x=>x.textContent='باقي '+remaining(x.dataset.until));if(promotions.some(p=>Date.parse(p.expires_at)<=Date.now())){promotions=promotions.filter(p=>Date.parse(p.expires_at)>Date.now());renderPromos()}},1000);
 setInterval(refreshShift,15000);setInterval(load,20000);load();
