@@ -88,6 +88,35 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 @media(max-width:600px){.welcome-note{margin:10px 0;padding:10px 12px}.feedback-card{padding:14px 12px}}
 @media(prefers-reduced-motion:reduce){.fly-to-cart{transition:none!important}#cartButton.cart-pop{animation:none!important}}
 
+
+/* More noticeable, non-intrusive micro interactions on public menu. */
+.product{animation:product-arrive .42s both;animation-delay:var(--item-delay,0ms)}
+.product .photo img{transition:transform .26s cubic-bezier(.2,.9,.2,1)}
+.product:hover .photo img{transform:translateY(-5px) rotate(-2deg) scale(1.06)}
+.add{transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;position:relative;overflow:hidden}
+.add:hover{box-shadow:0 6px 17px #b3864260;transform:translateY(-2px)}
+.add:active{transform:scale(.91)}.add.added{background:#287c55;box-shadow:0 0 0 4px #4da57728}
+.add.added::after{content:"✓";margin-inline-start:5px}
+#cartButton.cart-pop{animation:cart-pop .6s cubic-bezier(.2,.9,.2,1)}
+#count.badge-pop{animation:badge-pop .58s ease;background:#247b52}
+@keyframes badge-pop{0%{transform:scale(.7)}42%{transform:scale(1.65)}100%{transform:scale(1)}}
+@keyframes product-arrive{from{opacity:.15;transform:translateY(15px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.cart-confirm[hidden],.caramel-quantity[hidden]{display:none!important}
+.cart-confirm{position:fixed;z-index:72;bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(450px,calc(100% - 24px));background:#fffaf0;color:#2c2014;border:1px solid #dfc49b;border-radius:18px;box-shadow:0 12px 36px #39261045;padding:12px 12px;display:flex;align-items:center;gap:11px;text-align:start;animation:confirm-in .32s cubic-bezier(.16,1,.3,1)}
+.cart-confirm-check{background:#287e58;color:white;border-radius:50%;width:33px;height:33px;display:grid;place-items:center;flex:none;font-weight:900;font-size:17px}
+.cart-confirm div{flex:1;min-width:0}.cart-confirm strong{display:block;font-size:13px}.cart-confirm small{display:block;color:#786b56;font-size:11px;margin-top:4px}
+.cart-confirm button{border:0;cursor:pointer}.cart-confirm #cartConfirmOpen{background:#bd8f49;color:#fff;border-radius:10px;padding:10px 12px;font-weight:850;white-space:nowrap}
+.cart-confirm #cartConfirmClose{border:0;background:transparent;color:#8b806e;font-size:22px;line-height:1}
+@keyframes confirm-in{from{opacity:0;transform:translate(-50%,22px) scale(.95)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+.caramel-quantity{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ebd4b2;background:linear-gradient(125deg,#fff7e9,#fffcf6);padding:12px;border-radius:13px;flex-wrap:wrap}
+.caramel-description{display:grid;gap:5px}.caramel-description strong{font-size:13px}.caramel-description small{font-size:10px;color:#887661}
+.caramel-stepper{display:flex;align-items:center;gap:12px;direction:ltr}
+.caramel-stepper button{border:1px solid #bf9659;border-radius:50%;width:35px;height:35px;background:#fff;color:#946c31;font-size:20px;line-height:1;font-weight:900}
+.caramel-stepper button:disabled{opacity:.32;cursor:default}
+.caramel-stepper output{font-size:20px;font-weight:900;min-width:18px;text-align:center;direction:ltr}
+.cart-syrup{direction:inherit}
+@media(max-width:600px){.cart-confirm{padding:10px 8px;gap:7px}.cart-confirm #cartConfirmOpen{padding:9px 8px;font-size:11px}.cart-confirm strong{font-size:12px}.cart-confirm small{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.product{animation:none!important}.product .photo img{transition:none!important}.cart-confirm{animation:none!important}#count.badge-pop{animation:none!important}}
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -97,7 +126,11 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 <symbol id="i-all" viewBox="0 0 28 28"><rect x="3" y="3" width="9" height="9" rx="1"/><rect x="16" y="3" width="9" height="9" rx="1"/><rect x="3" y="16" width="9" height="9" rx="1"/><rect x="16" y="16" width="9" height="9" rx="1"/></symbol>
 </defs></svg>
 <header class="top"><div class="right-actions"><button id="langToggle" type="button" class="lang-toggle" aria-label="Switch to English">English</button><button id="searchButton" class="icon" title="بحث" aria-label="بحث"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg></button></div><div class="logo"><img src="assets/logo.webp" alt="Highway 67 Coffee" /></div><div class="left-actions"><nav class="nav"><a href="#menu" class="active">الطلب</a><a href="#menu">القائمة</a><a href="#about">حولنا</a></nav><button id="cartButton" class="icon" aria-label="سلة الطلبات"><svg viewBox="0 0 26 26"><path d="M2 2h4l3 14h12l3-10H7M9 22h1m10 0h1"/></svg><span class="badge" id="count">0</span></button></div><div id="searchbox" class="searchbox"><input id="searchInput" type="search" placeholder="ابحث عن منتج..." aria-label="بحث عن منتج" /></div></header>
-<div class="order-status" id="storeStatus">عرض القائمة · يتم التأكد من حالة استقبال الطلبات</div><main id="menu"><div class="hero" id="hero"><picture><img src="assets/hero.webp" alt="Highway 67 Coffee — قهوة وكرواسون"/></picture><div class="hero-cover"><div><h1>HIGHWAY 67</h1><small>COFFEE</small><p>Coffee · Croissants · More</p></div><img src="assets/iced.webp" alt="Highway 67 Iced Coffee"></div><button class="previous" id="prevBanner" aria-label="الصورة السابقة">›</button><button class="next" id="nextBanner" aria-label="الصورة التالية">‹</button><div class="dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
+<div class="order-status" id="storeStatus">عرض القائمة · يتم التأكد من حالة استقبال الطلبات</div>
+<div class="cart-confirm" id="cartConfirm" role="status" aria-live="polite" hidden>
+ <span class="cart-confirm-check">✓</span><div><strong id="cartConfirmName">تمت الإضافة إلى السلة!</strong><small>كمل اختيارك من المنيو بكل راحة</small></div>
+ <button type="button" id="cartConfirmOpen">عرض السلة</button><button type="button" id="cartConfirmClose" aria-label="إخفاء">×</button>
+</div><main id="menu"><div class="hero" id="hero"><picture><img src="assets/hero.webp" alt="Highway 67 Coffee — قهوة وكرواسون"/></picture><div class="hero-cover"><div><h1>HIGHWAY 67</h1><small>COFFEE</small><p>Coffee · Croissants · More</p></div><img src="assets/iced.webp" alt="Highway 67 Iced Coffee"></div><button class="previous" id="prevBanner" aria-label="الصورة السابقة">›</button><button class="next" id="nextBanner" aria-label="الصورة التالية">‹</button><div class="dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
 <div class="welcome-note" role="note"><span class="welcome-icon">☕</span><span>نحن كوفي جديد ونسعد بزيارتكم! تحتاج مساعدة في اختيار طلبك؟ كلم النادلة، وبتساعدك بكل سرور.</span></div>
 <section class="offers" id="offers" aria-label="العروض الحالية" hidden></section>
 <div class="tabs"><button class="tab active" data-cat="all"><svg><use href="#i-all"/></svg>الكل</button><button class="tab" data-cat="Hot Drinks"><svg><use href="#i-cup"/></svg>المشروبات الساخنة</button><button class="tab" data-cat="Cold Drinks"><svg><use href="#i-cold"/></svg>المشروبات الباردة</button><button class="tab" data-cat="Croissants"><svg><use href="#i-crois"/></svg>الكرواسون</button></div><div id="sections"></div><div class="footer" id="about"><b>HIGHWAY 67 COFFEE</b> — AL AIN, UAE<br>COFFEE ON THE ROAD</div></main>
@@ -108,6 +141,14 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <fieldset class="syrup-options"><legend>إضافات السيرب</legend>
     <label class="syrup-option"><input type="radio" name="syrup" value="" checked><span>بدون سيرب إضافي</span><small>متوفر</small></label>
     <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل 🍮</span><small>متوفر</small></label>
+    <div id="caramelQuantity" class="caramel-quantity" hidden>
+      <div class="caramel-description"><strong>كم جرعة كراميل تبا؟</strong><small>تقدر تختار من 1 إلى 5 جرعات</small></div>
+      <div class="caramel-stepper" aria-label="عدد جرعات الكراميل">
+        <button type="button" id="lessCaramel" aria-label="تقليل الكراميل">−</button>
+        <output id="caramelShots" aria-live="polite">1</output>
+        <button type="button" id="moreCaramel" aria-label="زيادة الكراميل">+</button>
+      </div>
+    </div>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="vanilla" disabled><span>فانيلا</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="hazelnut" disabled><span>بندق (هازلنت)</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="chocolate" disabled><span>شوكولاتة</span><small>غير متوفر</small></label>
@@ -140,4 +181,4 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم 💛</button><button type="button" id="skipFeedback">يمكن مرة ثانية</button></div>
 </section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
-<script src="/i18n.js?v=3" defer></script><script src="/app.js?v=3" defer></script></body></html>
+<script src="/i18n.js?v=4" defer></script><script src="/app.js?v=4" defer></script></body></html>
