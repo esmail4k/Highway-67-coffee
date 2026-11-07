@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let products=[],promotions=[],selection='all',search='',cart={},shopOpen=false,banner=0;
-let customizeId=null,customizeSource=null,feedbackToken=null,feedbackOrderId=null,feedbackLiked=null,feedbackStars=null,feedbackReasons=new Set();
+let customizeId=null,customizeSource=null,caramelShots=1,confirmTimer=null,feedbackToken=null,feedbackOrderId=null,feedbackLiked=null,feedbackStars=null,feedbackReasons=new Set();
 const groups=[['Hot Drinks','المشروبات الساخنة','i-cup'],['Cold Drinks','المشروبات الباردة','i-cold'],['Croissants','الكرواسون','i-crois'],['Desserts','الحلويات','i-crois'],['Other','أخرى','i-all']];
 function money(fils){return (Number(fils||0)/100).toFixed(2).replace(/\.00$/,'')+' AED'}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
@@ -11,83 +11,141 @@ function finalPrice(p){return Number(p.final_price_fils!=null?p.final_price_fils
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(notice.t);notice.t=setTimeout(()=>$('toast').classList.remove('show'),2400)}
 function qty(){return Object.values(cart).reduce((a,n)=>a+n,0)}
 function productForKey(key){return products.find(p=>p.id===key.split('__')[0])}
-function syrupForKey(key){return key.endsWith('__caramel')?'caramel':''}
+function shotsForKey(key){const match=/__caramel([1-5])$/.exec(key);return match?Number(match[1]):(key.endsWith('__caramel')?1:0)}
+function syrupForKey(key){return shotsForKey(key)>0?'caramel':''}
 function sum(){return Object.entries(cart).reduce((total,[key,n])=>{const p=productForKey(key);return total+(p?finalPrice(p)*n:0)},0)}
 function renderCards(){
  const sections=groups.filter(([id])=>selection==='all'||selection===id).map(([id,label,icon])=>{
  const matches=products.filter(p=>p.category===id&&p.available&&normalized(p.name+' '+p.id+' '+id+' '+(window.highway67Language ? window.highway67Language.productName(p.name) : '')).includes(search));
  if(!matches.length)return '';
- const cards=matches.map(p=>{
+ const cards=matches.map((p,index)=>{
  const disc=Number(p.effective_discount||0),sale=disc>0;
- return `<article class="product ${id==='Croissants'?'pastry':''}">${sale?`<span class="discountTag">خصم ${disc}%</span>`:''}<div class="photo"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.name)}"></div><div class="details"><div class="pname">${esc(p.name)}</div><div class="pricegroup">${sale?`<del class="oldprice">${money(p.price_fils)}</del>`:''}<span class="price ${sale?'saleprice':''}">${money(finalPrice(p))}</span></div><button type="button" class="add" data-add="${esc(p.id)}">+ إضافة</button></div></article>`}).join('');
+ return `<article class="product ${id==='Croissants'?'pastry':''}" style="--item-delay:${Math.min(index*45,450)}ms">${sale?`<span class="discountTag">خصم ${disc}%</span>`:''}<div class="photo"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.name)}"></div><div class="details"><div class="pname">${esc(p.name)}</div><div class="pricegroup">${sale?`<del class="oldprice">${money(p.price_fils)}</del>`:''}<span class="price ${sale?'saleprice':''}">${money(finalPrice(p))}</span></div><button type="button" class="add" data-add="${esc(p.id)}">+ إضافة</button></div></article>`}).join('');
  return `<section class="category" id="cat-${id.replace(/ /g,'-')}"><h2><svg><use href="#${icon}"/></svg>${label}</h2><div class="products ${id==='Croissants'?'pastries':''}">${cards}</div></section>`}).join('');
  $('sections').innerHTML=sections||'<p class="blank">ما حصلنا منتجات بهالبحث</p>';
  document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add,b));
 }
 
+function cartPulse(){
+ const target=$('cartButton'),badge=$('count');
+ target.classList.remove('cart-pop');badge.classList.remove('badge-pop');
+ void target.offsetWidth;target.classList.add('cart-pop');badge.classList.add('badge-pop');
+ setTimeout(()=>{target.classList.remove('cart-pop');badge.classList.remove('badge-pop')},750);
+}
+function cartSparkles(){
+ const center=$('cartButton').getBoundingClientRect();
+ if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+ for(let i=0;i<5;i++){
+  const spark=document.createElement('span');
+  spark.textContent=i%2?'✦':'✧';
+  spark.style.cssText='position:fixed;z-index:92;pointer-events:none;left:'+(center.left+center.width/2)+'px;top:'+(center.top+center.height/2)+'px;color:#bb8b3b;font-size:18px;line-height:1';
+  document.body.appendChild(spark);
+  const angle=(i*2*Math.PI/5)-Math.PI/2;
+  const animation=spark.animate([
+   {transform:'translate(-50%,-50%) scale(.3)',opacity:1},
+   {transform:'translate(calc(-50% + '+Math.round(Math.cos(angle)*49)+'px),calc(-50% + '+Math.round(Math.sin(angle)*49)+'px)) scale(1.25)',opacity:0}
+  ],{duration:600,easing:'cubic-bezier(.19,1,.22,1)'});
+  animation.onfinish=()=>spark.remove();setTimeout(()=>spark.remove(),800);
+ }
+}
 function flyToCart(p,source){
  const target=$('cartButton');
- if(!source||!target)return;
+ if(!source||!target)return cartPulse();
  const image=source.closest('.product')?.querySelector('.photo img');
- if(!image)return;
- if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-  target.classList.remove('cart-pop');void target.offsetWidth;target.classList.add('cart-pop');return;
- }
+ if(!image)return cartPulse();
+ if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return cartPulse();
  const start=image.getBoundingClientRect(),end=target.getBoundingClientRect();
+ const size=Math.min(start.width,start.height,88);
+ const x=start.left+start.width/2-size/2,y=start.top+start.height/2-size/2;
+ const dx=end.left+end.width/2-(x+size/2),dy=end.top+end.height/2-(y+size/2);
  const clone=document.createElement('img');
  clone.src=img(p);clone.alt='';clone.className='fly-to-cart';
- clone.style.cssText+=';top:'+start.top+'px;left:'+start.left+'px;width:'+Math.min(start.width,85)+'px;height:'+Math.min(start.height,85)+'px';
+ clone.style.cssText+=';left:'+x+'px;top:'+y+'px;width:'+size+'px;height:'+size+'px;transition:none;';
  document.body.appendChild(clone);
- requestAnimationFrame(()=>requestAnimationFrame(()=>{
-  const dx=end.left+end.width/2-(start.left+Math.min(start.width,85)/2);
-  const dy=end.top+end.height/2-(start.top+Math.min(start.height,85)/2);
-  clone.style.transform='translate('+dx+'px,'+dy+'px) scale(.18)';
-  clone.style.opacity='0.08';
- }));
- setTimeout(()=>{
-  clone.remove();
-  target.classList.remove('cart-pop');void target.offsetWidth;target.classList.add('cart-pop');
- },680);
+ const keyframes=[
+  {transform:'translate(0px,0px) rotate(0deg) scale(1)',opacity:1,offset:0},
+  {transform:'translate('+(dx*.22)+'px,'+(dy*.08-35)+'px) rotate(-9deg) scale(1.15)',opacity:1,offset:.28},
+  {transform:'translate('+(dx*.65)+'px,'+(dy*.65-25)+'px) rotate(12deg) scale(.65)',opacity:1,offset:.69},
+  {transform:'translate('+dx+'px,'+dy+'px) rotate(0deg) scale(.16)',opacity:.15,offset:1}
+ ];
+ if(clone.animate){
+  const animation=clone.animate(keyframes,{duration:850,easing:'cubic-bezier(.25,.6,.3,1)',fill:'forwards'});
+  animation.onfinish=()=>{clone.remove();cartPulse();cartSparkles()};
+  setTimeout(()=>{if(clone.isConnected){clone.remove();cartPulse();cartSparkles()}},960);
+ }else{
+  requestAnimationFrame(()=>{clone.style.transition='transform .8s ease,opacity .8s ease';clone.style.transform='translate('+dx+'px,'+dy+'px) scale(.2)';clone.style.opacity='0'});
+  setTimeout(()=>{clone.remove();cartPulse()},850);
+ }
 }
+function showCartConfirm(p,shots,source){
+ const banner=$('cartConfirm'),name=$('cartConfirmName');
+ name.textContent='✓ '+p.name+(shots?' + كراميل × '+shots:'')+' تمت إضافته للسلة';
+ banner.hidden=false;
+ clearTimeout(confirmTimer);
+ confirmTimer=setTimeout(()=>{banner.hidden=true},4300);
+ if(source&&source.isConnected){
+  const original=source.textContent;
+  source.textContent='✓ تمت الإضافة';
+  source.classList.add('added');
+  source.closest('.product')?.classList.add('just-added');
+  setTimeout(()=>{
+   if(source.isConnected){source.textContent=original;source.classList.remove('added');source.closest('.product')?.classList.remove('just-added')}
+  },1350);
+ }
+}
+$('cartConfirmOpen').onclick=()=>{clearTimeout(confirmTimer);$('cartConfirm').hidden=true;step('cart');drawer(true)};
+$('cartConfirmClose').onclick=()=>{$('cartConfirm').hidden=true};
 function closeCustomizer(){
  $('customModal').hidden=true;$('customOverlay').hidden=true;
  document.body.style.overflow='';customizeId=null;customizeSource=null;
 }
+function updateCaramelStep(){
+ $('caramelShots').textContent=caramelShots;
+ $('lessCaramel').disabled=caramelShots<=1;
+ $('moreCaramel').disabled=caramelShots>=5;
+}
+function syncCaramelChoice(){
+ const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
+ $('caramelQuantity').hidden=syrup!=='caramel';
+}
 function openCustomizer(id,source){
- customizeId=id;customizeSource=source;
+ customizeId=id;customizeSource=source;caramelShots=1;
  const p=products.find(x=>x.id===id);if(!p)return;
  $('customItem').textContent=p.name+' · '+money(finalPrice(p));
  document.querySelector('input[name="syrup"][value=""]').checked=true;
+ updateCaramelStep();syncCaramelChoice();
  $('customOverlay').hidden=false;$('customModal').hidden=false;
  document.body.style.overflow='hidden';
  $('confirmCustom').focus();
 }
-function addToCart(id,syrup,source){
+function addToCart(id,shots,source){
  const p=products.find(x=>x.id===id);if(!p)return;
- const key=id+(syrup?'__'+syrup:'');
+ const key=id+(shots?'__caramel'+shots:'');
  cart[key]=Math.min(30,(cart[key]||0)+1);
- renderCart();flyToCart(p,source);
- notice('تمت إضافة '+p.name+(syrup?' · كراميل':'')+' إلى السلة');
+ renderCart();flyToCart(p,source);showCartConfirm(p,shots,source);
 }
 function add(id,source){
- if(id==='spanish'||id==='icedspanish')return openCustomizer(id,source);
- addToCart(id,'',source);
+ if(['spanish','icedspanish','latte','icedlatte'].includes(id))return openCustomizer(id,source);
+ addToCart(id,0,source);
 }
 $('closeCustom').onclick=closeCustomizer;
 $('customOverlay').onclick=closeCustomizer;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('customModal').hidden)closeCustomizer()});
+document.querySelectorAll('input[name="syrup"]').forEach(x=>x.addEventListener('change',syncCaramelChoice));
+$('lessCaramel').onclick=()=>{caramelShots=Math.max(1,caramelShots-1);updateCaramelStep()};
+$('moreCaramel').onclick=()=>{caramelShots=Math.min(5,caramelShots+1);updateCaramelStep()};
 $('confirmCustom').onclick=()=>{
  if(!customizeId)return;
  const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
  if(syrup&&syrup!=='caramel')return;
- const id=customizeId,source=customizeSource;
- closeCustomizer();addToCart(id,syrup,source);
+ const id=customizeId,source=customizeSource,shots=syrup==='caramel'?caramelShots:0;
+ closeCustomizer();addToCart(id,shots,source);
 };
 function renderCart(){
  const list=Object.entries(cart).filter(([key,n])=>n>0&&productForKey(key));
  $('cartItems').innerHTML=list.length?list.map(([key,n])=>{
- const p=productForKey(key),syrup=syrupForKey(key);
- return `<div class="rowcart"><div class="cartPreview"><img src="${esc(img(p))}" alt=""><div><b>${esc(p.name)}</b>${syrup?'<small class="cart-syrup">+ كراميل</small>':''}<p>${money(finalPrice(p))} × ${n}</p><button type="button" class="removeItem" data-remove="${esc(key)}" aria-label="حذف ${esc(p.name)} من السلة">حذف المنتج</button></div></div><div class="controls"><button type="button" data-edit="${esc(key)}" data-delta="-1" aria-label="تقليل">−</button><b>${n}</b><button type="button" data-edit="${esc(key)}" data-delta="1" aria-label="زيادة">+</button></div></div>`;
+ const p=productForKey(key),shots=shotsForKey(key);
+ return `<div class="rowcart"><div class="cartPreview"><img src="${esc(img(p))}" alt=""><div><b>${esc(p.name)}</b>${shots?'<small class="cart-syrup">+ كراميل × '+shots+'</small>':''}<p>${money(finalPrice(p))} × ${n}</p><button type="button" class="removeItem" data-remove="${esc(key)}" aria-label="حذف ${esc(p.name)} من السلة">حذف المنتج</button></div></div><div class="controls"><button type="button" data-edit="${esc(key)}" data-delta="-1" aria-label="تقليل">−</button><b>${n}</b><button type="button" data-edit="${esc(key)}" data-delta="1" aria-label="زيادة">+</button></div></div>`;
  }).join(''):'<div class="cartEmpty">سلتك فاضية؛ أضف منتجات من القائمة.</div>';
  $('count').textContent=qty();$('total').textContent=money(sum());$('checkoutTotal').textContent=money(sum());
  $('checkout').disabled=!qty()||!shopOpen;
@@ -106,7 +164,7 @@ $('goCart').onclick=()=>step('cart');
 $('checkoutForm').onsubmit=async e=>{
  e.preventDefault();$('submitOrder').disabled=true;$('checkoutError').textContent='جاري إرسال الطلب...';
  try{
-  const payload={customer_name:$('customerName').value.trim(),phone:$('customerPhone').value.trim(),car_plate:$('customerCar').value.trim(),notes:$('customerNotes').value.trim(),items:Object.keys(cart).filter(k=>cart[k]>0).map(key=>({id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key)}))};
+  const payload={customer_name:$('customerName').value.trim(),phone:$('customerPhone').value.trim(),car_plate:$('customerCar').value.trim(),notes:$('customerNotes').value.trim(),items:Object.keys(cart).filter(k=>cart[k]>0).map(key=>({id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key),syrup_qty:shotsForKey(key)}))};
   const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
   $('receiptText').textContent=`رقم طلبك #${result.id} — الإجمالي ${money(result.total_fils)}. وصل الطلب إلى شاشة الموظفين.`;
   feedbackToken=result.feedback_token||null;feedbackOrderId=result.id;resetFeedback();
