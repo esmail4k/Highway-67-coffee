@@ -121,6 +121,7 @@ def init():
         for col,ddl in [('label',"TEXT NOT NULL DEFAULT ''"),('notes',"TEXT NOT NULL DEFAULT ''"),('hidden_for_staff','INTEGER NOT NULL DEFAULT 0')]:add_column(d,'shifts',col,ddl)
         add_column(d,'order_items','original_fils','INTEGER')
         add_column(d,'order_items','syrup','TEXT NOT NULL DEFAULT \'\'')
+        add_column(d,'order_items','syrup_qty','INTEGER NOT NULL DEFAULT 0')
         d.executescript('''
         CREATE TABLE IF NOT EXISTS order_feedback_tokens(
             order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
@@ -405,8 +406,9 @@ class Handler(BaseHTTPRequestHandler):
                          FROM orders o JOIN shifts s ON s.id=o.shift_id
                          ORDER BY o.id DESC''')]
                 for o in orders:
-                    items=d.execute('SELECT name,qty,syrup FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
-                    o['items']=' | '.join(str(i['qty'])+' × '+i['name']+(' + كراميل' if i['syrup']=='caramel' else '') for i in items)
+                    items=d.execute('SELECT name,qty,syrup,syrup_qty FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
+                    o['items']=' | '.join(str(i['qty'])+' × '+i['name']+
+                              (' + كراميل '+str(max(1,i['syrup_qty']))+' جرعة' if i['syrup']=='caramel' else '') for i in items)
             out=io.StringIO()
             w=csv.writer(out)
             w.writerow(['رقم الطلب','تاريخ الطلب','يوم العمل','اسم الزبون','الهاتف',
@@ -625,17 +627,22 @@ class Handler(BaseHTTPRequestHandler):
                     p=allowed.get(x['id'])
                     if not p:return self.sendj(400,{'error':'منتج غير متاح للطلب الآن'})
                     syrup=x.get('syrup','')
+                    syrup_qty=x.get('syrup_qty',1 if syrup=='caramel' else 0)
                     if not isinstance(syrup,str) or syrup not in ('','caramel'):
                         return self.sendj(400,{'error':'الإضافة غير متوفرة'})
-                    if syrup and p['id'] not in ('spanish','icedspanish'):
+                    if type(syrup_qty)!=int or not 0<=syrup_qty<=5:
+                        return self.sendj(400,{'error':'عدد جرعات السيرب غير صحيح'})
+                    if (syrup=='caramel') != (syrup_qty>0):
+                        return self.sendj(400,{'error':'اختر عدد جرعات الكراميل'})
+                    if syrup and p['id'] not in ('spanish','icedspanish','latte','icedlatte'):
                         return self.sendj(400,{'error':'هذه الإضافة غير متاحة لهذا المشروب'})
-                    lines.append((p,x['qty'],syrup));total+=p['final_price_fils']*x['qty']
+                    lines.append((p,x['qty'],syrup,syrup_qty));total+=p['final_price_fils']*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
                 cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
                 oid=cursor.lastrowid
-                for p,qty,syrup in lines:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup) VALUES(?,?,?,?,?,?,?,?)',
-                              (oid,p['id'],p['name'],p['image'],qty,p['final_price_fils'],p['price_fils'],syrup))
+                for p,qty,syrup,syrup_qty in lines:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty) VALUES(?,?,?,?,?,?,?,?,?)',
+                              (oid,p['id'],p['name'],p['image'],qty,p['final_price_fils'],p['price_fils'],syrup,syrup_qty))
                 feedback_token=secrets.token_urlsafe(24)
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
