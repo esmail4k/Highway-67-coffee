@@ -60,7 +60,7 @@ def add_column(db,table,col,definition):
 
 def owner_totp_counter(code):
     """Match a six-digit RFC 6238 authenticator code; tolerate +/- 30 s clock skew."""
-    if not re.fullmatch(r'\\d{6}',str(code)):return None
+    if not re.fullmatch(r'\d{6}',str(code)):return None
     try:
         secret=base64.b32decode(OWNER_TOTP_SECRET+'='*((-len(OWNER_TOTP_SECRET))%8),casefold=True)
         if len(secret)<16:return None
@@ -417,8 +417,9 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/shift':
             with con() as d:shift=active_shift(d)
             return self.sendj(200,{'open':bool(shift),'orders_enabled':REAL_ORDERS})
-        if path=='/api/staff/export.csv':
-            if not self.auth('staff'):return
+        if path in ('/api/staff/export.csv','/api/owner/export.csv'):
+            role='owner' if path.startswith('/api/owner/') else 'staff'
+            if not self.auth(role):return
             # Staff members can download orders and retain a backup before free DB expiry.
             with con() as d:
                 orders=[dict(o) for o in d.execute(
@@ -479,14 +480,39 @@ class Handler(BaseHTTPRequestHandler):
             with con() as d:return self.sendj(200,{'shifts':shift_cards(d,'staff')})
         if path=='/api/owner/overview':
             if not self.auth('owner'):return
+            today=localnow().date().isoformat()
+            this_month=today[:7]+'%'
             with con() as d:
                 shift=active_shift(d)
                 result=shift_summary(d,shift)
                 result['shifts']=shift_cards(d,'owner')
+                summary=d.execute('''
+                    SELECT COUNT(*) all_orders,
+                      COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_fils ELSE 0 END),0) all_sales_fils,
+                      SUM(CASE WHEN o.status='delivered' THEN 1 ELSE 0 END) delivered_orders,
+                      COALESCE(SUM(CASE WHEN o.status='delivered' AND s.local_date=? THEN o.total_fils ELSE 0 END),0) today_sales_fils,
+                      COALESCE(SUM(CASE WHEN o.status='delivered' AND s.local_date LIKE ? THEN o.total_fils ELSE 0 END),0) month_sales_fils,
+                      SUM(CASE WHEN o.status='new' THEN 1 ELSE 0 END) new_orders,
+                      SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END) ready_orders
+                    FROM orders o JOIN shifts s ON s.id=o.shift_id
+                    ''',(today,this_month)).fetchone()
+                result['business_totals']=dict(summary)
+                result['daily_sales']=[dict(x) for x in d.execute('''
+                    SELECT s.local_date day,
+                     COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_fils ELSE 0 END),0) sales_fils
+                    FROM shifts s LEFT JOIN orders o ON o.shift_id=s.id
+                    GROUP BY s.local_date ORDER BY s.local_date DESC LIMIT 14''')]
             return self.sendj(200,result)
+        if path=='/api/owner/feedback':
+            if not self.auth('owner'):return
+            with con() as d:
+                feedback=[dict(x) for x in d.execute(
+                  'SELECT order_id,liked,reasons,service_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 100')]
+            for row in feedback:row['reasons']=json.loads(row['reasons'])
+            return self.sendj(200,{'feedback':feedback})
         if path=='/api/owner/products':
             if not self.auth('owner'):return
-            with con() as d:result=[dict(p) for p in d.execute('SELECT * FROM products ORDER BY rowid')]
+            with con() as d:result=[dict(p) for p in d.execute('SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid')]
             return self.sendj(200,{'products':result})
         if path=='/api/owner/staff/accounts':
             if not self.auth('owner'):return
@@ -751,10 +777,10 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('UPDATE shifts SET ended_at=? WHERE id=?',(finished,shift['id']))
                 d.commit()
             return self.sendj(200,{'ok':True,'ended_shift_id':shift['id'],'cancelled_orders':n})
-        match=re.fullmatch(r'/api/staff/products/([a-zA-Z0-9_-]+)/availability',path)
+        match=re.fullmatch(r'/api/(staff|owner)/products/([a-zA-Z0-9_-]+)/availability',path)
         if match:
-            if not self.auth('staff'):return
-            pid=match.group(1)
+            role,pid=match.group(1),match.group(2)
+            if not self.auth(role):return
             available=data.get('available')
             if not isinstance(available,bool):
                 return self.sendj(400,{'error':'حالة المنتج غير صحيحة'})
