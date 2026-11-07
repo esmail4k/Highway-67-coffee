@@ -1,7 +1,10 @@
 'use strict';
 let staffAccounts=[],overview=null,products=[],promos=[],activeView='overview',editProduct=null,editPromo=null,archiveData=null;
+let ownerReviews=[];
 const errtxt=(id,s,ok=false)=>{$(id).textContent=s;$(id).classList.toggle('success',ok)};
-function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes)}
+function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('ownerExport').classList.toggle('hidden',yes)}
+$('ownerExport').onclick=()=>{window.location.href='/api/owner/export.csv'};
+$('ownerRefresh').onclick=()=>loadAll();
 let currentChallenge=null;
 function otpStep(challenge){currentChallenge=challenge;$('loginForm').classList.add('hidden');$('verifyForm').classList.remove('hidden');$('otpCode').focus()}
 function resetLoginStep(){currentChallenge=null;$('loginForm').classList.remove('hidden');$('verifyForm').classList.add('hidden');$('otpCode').value='';$('password').value=''}
@@ -20,10 +23,10 @@ $('logout').onclick=async()=>{await api('/api/owner/logout','POST',{}).catch(()=
 async function boot(){try{const s=await api('/api/owner/session');loginVisible(!s.authenticated);if(s.authenticated)await loadAll()}catch{loginVisible(true)}}
 async function loadAll(){try{[overview,{products},{promotions:promos},{accounts:staffAccounts}]=await Promise.all([api('/api/owner/overview'),api('/api/owner/products'),api('/api/owner/promotions'),api('/api/owner/staff/accounts')]);render()}catch(e){alert(e.message)}}
 function render(){if(!overview)return;$('shiftStatus').textContent=overview.shift?'الوردية #'+overview.shift.id+' مفتوحة':'لا توجد وردية مفتوحة';$('shiftStatus').classList.toggle('on',!!overview.shift);
+ renderBusinessTotals();renderDailySales();
  $('overviewStats').innerHTML=summaryCards(overview);$('recentOrders').innerHTML=overview.orders.length?overview.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد طلبات في الوردية الحالية.</div>';
  $('overviewTop').innerHTML=topProducts(overview);$('overviewTotals').innerHTML=`<div class="kpirow"><span>طلبات جديدة</span><b>${overview.counts.new}</b></div><div class="kpirow"><span>جاهزة</span><b>${overview.counts.ready}</b></div><div class="kpirow"><span>مُسلّمة</span><b>${overview.counts.delivered}</b></div><div class="kpirow"><span>المبيعات</span><b>${fmt(overview.sales_fils)}</b></div>`;
- $('productList').innerHTML=products.map(p=>`<article class="productRow"><img src="${safe(asset(p.image))}" alt=""><div class="pd"><b>${safe(p.name)}</b><small>${safe(p.category)} · ${p.available?'متوفر':'غير متوفر'} ${p.promo_only?'· عرض فقط':''}</small></div><div class="pvalue">${p.discount_percent?`<div class="promoPrice"><del class="struck">${fmt(p.price_fils)}</del><strong class="discount">${fmt(Math.floor((p.price_fils*(100-p.discount_percent)+50)/100))}</strong></div>`:fmt(p.price_fils)}</div><span class="badge ${p.discount_percent?'red':'grey'}">${p.discount_percent?'خصم '+p.discount_percent+'%':'السعر الأساسي'}</span><button class="button outline sm" data-editproduct="${safe(p.id)}">تعديل</button></article>`).join('');
- document.querySelectorAll('[data-editproduct]').forEach(b=>b.onclick=()=>productModal(products.find(p=>p.id===b.dataset.editproduct)));
+ renderOwnerProducts();
  const weekdayNames=['الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
  $('promoList').innerHTML=promos.length?promos.map(p=>{let days=[];try{days=JSON.parse(p.days||'[]')}catch{}const schedule=p.mode==='weekly'?days.map(d=>weekdayNames[d]).join('، ')+' · '+p.start_time+'–'+p.end_time:((p.start_at||'')+' إلى '+(p.end_at||''));return `<article class="miniPromo"><div><strong>${safe(p.title)}</strong> <span class="badge ${p.enabled?'green':'grey'}">${p.enabled?'مفعّل':'متوقف'}</span><p>${safe(p.subtitle)}<br>المنتج: ${safe((products.find(x=>x.id===p.product_id)||{}).name||p.product_id)} · خصم ${p.discount_percent}%<br>${safe(schedule)}</p></div><div class="actions"><button class="button outline sm" data-editpromo="${p.id}">تعديل</button><button class="button red sm" data-deletepromo="${p.id}">حذف</button></div></article>`}).join(''):'<div class="empty">ما في عروض بعد. أضف أول عرض من الزر الموجود فوق.</div>';
  document.querySelectorAll('[data-editpromo]').forEach(b=>b.onclick=()=>promoModal(promos.find(p=>p.id===Number(b.dataset.editpromo))));
@@ -40,6 +43,70 @@ function render(){if(!overview)return;$('shiftStatus').textContent=overview.shif
  renderStaffAccounts();
  bindInvoiceDeletes();
 }
+
+function renderBusinessTotals(){
+ const t=overview?.business_totals||{};
+ const data=[
+  ['مبيعات اليوم',t.today_sales_fils||0,'المبيعات المسلّمة اليوم',true],
+  ['مبيعات الشهر',t.month_sales_fils||0,'من أول الشهر حتى اليوم',true],
+  ['إجمالي المبيعات',t.all_sales_fils||0,'جميع الأيام المسجّلة',true],
+  ['عدد الطلبات',t.all_orders||0,'جميع الطلبات بما فيها غير المسلّمة',false]
+ ];
+ $('ownerTotalStats').innerHTML=data.map(([title,amount,desc,currency])=>`<div class="owner-total-card"><div class="label">${title}</div><div class="value">${currency?fmt(amount):Number(amount)}</div><small>${desc}</small></div>`).join('');
+}
+function renderDailySales(){
+ const days=[...(overview?.daily_sales||[])].reverse();
+ const max=Math.max(100,...days.map(x=>Number(x.sales_fils||0)));
+ $('ownerDailySales').innerHTML=days.length?days.map(x=>{
+  const width=Math.max(0,Math.min(100,100*Number(x.sales_fils||0)/max));
+  return `<div class="owner-daily-row"><small>${safe(x.day)}</small><div class="owner-daily-track"><i style="width:${width.toFixed(2)}%"></i></div><b>${fmt(x.sales_fils)}</b></div>`;
+ }).join(''):'<div class="empty">ما فيه مبيعات مسجلة بعد.</div>';
+}
+function renderOwnerProducts(){
+ const term=String($('ownerProductSearch').value||'').trim().toLowerCase();
+ const filtered=products.filter(p=>(p.name+' '+p.id+' '+p.category).toLowerCase().includes(term));
+ $('productList').innerHTML=filtered.length?filtered.map(p=>{
+  const live=!!p.available;
+  return `<article class="productRow">
+    <img src="${safe(asset(p.image))}" alt="">
+    <div class="pd"><b>${safe(p.name)}</b><small>${safe(p.category)} ${p.promo_only?'· عرض فقط':''}</small></div>
+    <div class="pvalue">${p.discount_percent?`<div class="promoPrice"><del class="struck">${fmt(p.price_fils)}</del><strong class="discount">${fmt(Math.floor((p.price_fils*(100-p.discount_percent)+50)/100))}</strong></div>`:fmt(p.price_fils)}</div>
+    <span class="owner-stock-state ${live?'':'off'}">${live?'متوفر':'غير متوفر'}</span>
+    <button type="button" class="button ${live?'outline':'green'} sm owner-stock-btn" data-availability="${safe(p.id)}" data-value="${live?'false':'true'}">${live?'تعيين غير متوفر':'إعادة التوفر'}</button>
+    <button type="button" class="button outline sm" data-editproduct="${safe(p.id)}">تعديل</button>
+  </article>`;
+ }).join(''):'<div class="empty">ما حصلنا منتجات بهالبحث.</div>';
+ document.querySelectorAll('[data-editproduct]').forEach(b=>b.onclick=()=>productModal(products.find(p=>p.id===b.dataset.editproduct)));
+ document.querySelectorAll('[data-availability]').forEach(b=>b.onclick=async()=>{
+  const id=b.dataset.availability,available=b.dataset.value==='true';
+  b.disabled=true;
+  try{
+   await api('/api/owner/products/'+encodeURIComponent(id)+'/availability','POST',{available});
+   const p=products.find(p=>p.id===id);if(p)p.available=available?1:0;
+   renderOwnerProducts();
+  }catch(e){alert(e.message);b.disabled=false}
+ });
+}
+async function loadOwnerReviews(){
+ const el=$('ownerFeedbackList');
+ el.innerHTML='<div class="empty">جاري تحميل التقييمات...</div>';
+ try{
+  const result=await api('/api/owner/feedback');
+  ownerReviews=result.feedback||[];
+  const reasons={
+   too_sweet:'حالي زيادة',not_hot:'الحرارة مب مضبوطة',taste:'الطعم أقل من المتوقع',
+   missing:'ناقص منتج أو إضافة',presentation:'الشكل يحتاج تحسين',other:'سبب آخر'};
+  el.innerHTML=ownerReviews.length?ownerReviews.map(x=>{
+   const mood=x.liked===1?'😍 أعجبهم':x.liked===0?'😕 يحتاج تحسين':'— بدون تقييم للطعم';
+   const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
+   const tags=(x.reasons||[]).map(t=>reasons[t]||t).join(' · ');
+   return `<article class="owner-review"><div class="header"><b>طلب #${Number(x.order_id)} · ${mood}</b><small>${when(x.created_at)}</small></div>
+   <p>الخدمة: <span class="stars">${stars}</span></p>${tags?'<p>'+safe(tags)+'</p>':''}
+   ${x.comment?'<p>'+safe(x.comment)+'</p>':'<p>الزبون ما أضاف ملاحظة</p>'}</article>`;
+  }).join(''):'<div class="empty">لا توجد تقييمات حتى الآن.</div>';
+ }catch(e){el.innerHTML='<div class="empty">'+safe(e.message)+'</div>'}
+}
+
 function ownerBill(o){return bill(o,false)+`<div class="deleteInvoice"><button type="button" class="button red sm" data-deleteinvoice="${o.id}">حذف الفاتورة #${o.id}</button></div>`}
 function bindInvoiceDeletes(){
  document.querySelectorAll('[data-deleteinvoice]').forEach(b=>b.onclick=async()=>{
@@ -55,7 +122,14 @@ function bindInvoiceDeletes(){
   }catch(e){alert(e.message);b.disabled=false}
  });
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{activeView=b.dataset.view;document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['overview','products','promos','archive','staffAccounts'].forEach(k=>$('view-'+k).classList.toggle('hidden',k!==activeView))});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+ activeView=b.dataset.view;
+ document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
+ ['overview','products','promos','archive','staffAccounts','feedback'].forEach(k=>$('view-'+k).classList.toggle('hidden',k!==activeView));
+ if(activeView==='feedback')loadOwnerReviews();
+});
+$('ownerProductSearch').addEventListener('input',renderOwnerProducts);
+$('refreshOwnerFeedback').onclick=loadOwnerReviews;
 function modal(id,on){$(id).classList.toggle('show',on)}document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>modal(b.dataset.close,false));document.querySelectorAll('.modalBackdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)modal(m.id,false)}));
 function productModal(p){editProduct=p||null;$('productTitle').textContent=p?'تعديل المنتج':'إضافة منتج جديد';$('productId').value=p?.id||'';$('productName').value=p?.name||'';$('productCat').value=p?.category||'Hot Drinks';$('productPrice').value=p?(p.price_fils/100).toFixed(2):'';$('productDiscount').value=p?.discount_percent||0;$('productAvailable').checked=p?!!p.available:true;$('productPromoOnly').checked=p?!!p.promo_only:false;$('productImage').src=asset(p?.image||'hot.webp');$('productUpload').value='';errtxt('productError','');modal('productModal',true)}
 $('newProduct').onclick=()=>productModal();$('productUpload').onchange=e=>{const f=e.target.files[0];if(f)$('productImage').src=URL.createObjectURL(f)};
