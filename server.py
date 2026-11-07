@@ -769,14 +769,12 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE');shift=active_shift(d)
                 if not shift:return self.sendj(409,{'error':'لا يوجد يوم عمل مفتوح'})
                 n=d.execute("SELECT COUNT(*) FROM orders WHERE shift_id=? AND status IN ('new','ready')",(shift['id'],)).fetchone()[0]
-                if n and data.get('force_cancel_pending') is not True:
-                    return self.sendj(409,{'error':f'يوجد {n} طلب لم يُسلّم بعد. تأكيد إنهاء اليوم سيلغي هذه الطلبات ويحفظها في الأرشيف.', 'pending_count':n})
-                finished=utcnow()
                 if n:
-                    d.execute("UPDATE orders SET status='cancelled' WHERE shift_id=? AND status IN ('new','ready')",(shift['id'],))
+                    return self.sendj(409,{'error':f'يوجد {n} طلب لم يُسلّم بعد. لا يمكن إنهاء اليوم قبل تسليم جميع الطلبات.', 'pending_count':n})
+                finished=utcnow()
                 d.execute('UPDATE shifts SET ended_at=? WHERE id=?',(finished,shift['id']))
                 d.commit()
-            return self.sendj(200,{'ok':True,'ended_shift_id':shift['id'],'cancelled_orders':n})
+            return self.sendj(200,{'ok':True,'ended_shift_id':shift['id'],'cancelled_orders':0})
         match=re.fullmatch(r'/api/(staff|owner)/products/([a-zA-Z0-9_-]+)/availability',path)
         if match:
             role,pid=match.group(1),match.group(2)
