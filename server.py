@@ -122,6 +122,8 @@ def init():
         add_column(d,'order_items','original_fils','INTEGER')
         add_column(d,'order_items','syrup','TEXT NOT NULL DEFAULT \'\'')
         add_column(d,'order_items','syrup_qty','INTEGER NOT NULL DEFAULT 0')
+        add_column(d,'order_items','item_note',"TEXT NOT NULL DEFAULT ''")
+        add_column(d,'orders','cancel_reason',"TEXT NOT NULL DEFAULT ''")
         d.executescript('''
         CREATE TABLE IF NOT EXISTS order_feedback_tokens(
             order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
@@ -406,9 +408,10 @@ class Handler(BaseHTTPRequestHandler):
                          FROM orders o JOIN shifts s ON s.id=o.shift_id
                          ORDER BY o.id DESC''')]
                 for o in orders:
-                    items=d.execute('SELECT name,qty,syrup,syrup_qty FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
+                    items=d.execute('SELECT name,qty,syrup,syrup_qty,item_note FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
                     o['items']=' | '.join(str(i['qty'])+' × '+i['name']+
-                              (' + كراميل '+str(max(1,i['syrup_qty']))+' جرعة' if i['syrup']=='caramel' else '') for i in items)
+                              (' + كراميل (1 درهم)' if i['syrup']=='caramel' else '')+
+                              (' — '+i['item_note'] if i['item_note'] else '') for i in items)
             out=io.StringIO()
             w=csv.writer(out)
             w.writerow(['رقم الطلب','تاريخ الطلب','يوم العمل','اسم الزبون','الهاتف',
@@ -439,6 +442,12 @@ class Handler(BaseHTTPRequestHandler):
                 result=shift_summary(d,shift)
                 result['shifts']=shift_cards(d,'staff')
             return self.sendj(200,result)
+        if path=='/api/staff/products':
+            if not self.auth('staff'):return
+            with con() as d:
+                products=[dict(row) for row in d.execute(
+                    "SELECT id,name,category,available FROM products WHERE id!='piccolo' ORDER BY rowid")]
+            return self.sendj(200,{'products':products})
         if path=='/api/staff/feedback':
             if not self.auth('staff'):return
             with con() as d:
@@ -628,21 +637,24 @@ class Handler(BaseHTTPRequestHandler):
                     if not p:return self.sendj(400,{'error':'منتج غير متاح للطلب الآن'})
                     syrup=x.get('syrup','')
                     syrup_qty=x.get('syrup_qty',1 if syrup=='caramel' else 0)
+                    item_note=x.get('item_note','')
                     if not isinstance(syrup,str) or syrup not in ('','caramel'):
                         return self.sendj(400,{'error':'الإضافة غير متوفرة'})
-                    if type(syrup_qty)!=int or not 0<=syrup_qty<=5:
-                        return self.sendj(400,{'error':'عدد جرعات السيرب غير صحيح'})
-                    if (syrup=='caramel') != (syrup_qty>0):
-                        return self.sendj(400,{'error':'اختر عدد جرعات الكراميل'})
+                    if type(syrup_qty)!=int or syrup_qty not in (0,1) or bool(syrup)==(syrup_qty==0):
+                        return self.sendj(400,{'error':'الكراميل جرعة واحدة فقط'})
                     if syrup and p['id'] not in ('spanish','icedspanish','latte','icedlatte'):
                         return self.sendj(400,{'error':'هذه الإضافة غير متاحة لهذا المشروب'})
-                    lines.append((p,x['qty'],syrup,syrup_qty));total+=p['final_price_fils']*x['qty']
+                    if not isinstance(item_note,str) or len(item_note.strip())>160:
+                        return self.sendj(400,{'error':'ملاحظة المنتج طويلة أو غير صحيحة'})
+                    unit_price=p['final_price_fils']+(100 if syrup=='caramel' else 0)
+                    lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price))
+                    total+=unit_price*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
                 cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
                 oid=cursor.lastrowid
-                for p,qty,syrup,syrup_qty in lines:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty) VALUES(?,?,?,?,?,?,?,?,?)',
-                              (oid,p['id'],p['name'],p['image'],qty,p['final_price_fils'],p['price_fils'],syrup,syrup_qty))
+                for p,qty,syrup,syrup_qty,item_note,unit_price in lines:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                              (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note))
                 feedback_token=secrets.token_urlsafe(24)
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
@@ -701,6 +713,37 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('UPDATE shifts SET ended_at=? WHERE id=?',(finished,shift['id']))
                 d.commit()
             return self.sendj(200,{'ok':True,'ended_shift_id':shift['id'],'cancelled_orders':n})
+        match=re.fullmatch(r'/api/staff/products/([a-zA-Z0-9_-]+)/availability',path)
+        if match:
+            if not self.auth('staff'):return
+            pid=match.group(1)
+            available=data.get('available')
+            if not isinstance(available,bool):
+                return self.sendj(400,{'error':'حالة المنتج غير صحيحة'})
+            if pid=='piccolo':
+                return self.sendj(403,{'error':'هذا المنتج محذوف من القائمة'})
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                cur=d.execute('UPDATE products SET available=? WHERE id=?',(int(available),pid))
+                if cur.rowcount==0:return self.sendj(404,{'error':'المنتج غير موجود'})
+                d.commit()
+            return self.sendj(200,{'ok':True,'id':pid,'available':available})
+        match=re.fullmatch(r'/api/staff/orders/(\d+)/cancel',path)
+        if match:
+            if not self.auth('staff'):return
+            oid=int(match.group(1))
+            try:reason=textfield(data,'reason',100)
+            except ValueError as e:return self.sendj(400,{'error':str(e)})
+            if not reason:reason='غير متوفر'
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                order=d.execute('SELECT o.status,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
+                if not order:return self.sendj(404,{'error':'الطلب غير موجود'})
+                if order['ended_at'] or order['status'] not in ('new','ready'):
+                    return self.sendj(409,{'error':'يمكن إلغاء الطلب الجديد أو الجاهز فقط؛ الطلبات المسلّمة محفوظة'})
+                d.execute('UPDATE orders SET status=?,cancel_reason=? WHERE id=?',('cancelled',reason,oid))
+                d.commit()
+            return self.sendj(200,{'ok':True,'id':oid,'status':'cancelled'})
         match=re.fullmatch(r'/api/staff/orders/(\d+)/status',path)
         if match:
             if not self.auth('staff'):return
