@@ -49,6 +49,44 @@ html[dir="ltr"] .checkoutForm input,html[dir="ltr"] .checkoutForm textarea{direc
 html[dir="ltr"] .category h2:after{margin-left:0}
 html[dir="ltr"] .promoCard .timer{direction:ltr}
 @media(max-width:600px){.lang-toggle{font-size:11px;min-width:62px;padding:7px 9px}.right-actions{gap:7px}}
+
+/* Welcome, customization, cart flight and optional guest feedback. */
+.welcome-note{display:flex;gap:11px;align-items:center;margin:13px 10px 6px;padding:12px 16px;background:#fff9ee;border:1px solid #ecd6b6;border-radius:13px;color:#674b28;font-size:12px;line-height:1.85}
+.welcome-icon{display:grid;place-items:center;flex:none;width:35px;height:35px;border-radius:50%;background:#f4e5cb;font-size:19px}
+#cartButton.cart-pop{animation:cart-pop .45s ease}
+@keyframes cart-pop{0%,100%{transform:scale(1)}42%{transform:scale(1.3)}}
+.fly-to-cart{position:fixed;z-index:90;width:70px;height:70px;border-radius:20px;background:#fff;object-fit:contain;box-shadow:0 7px 20px #0003;pointer-events:none;transition:transform .64s cubic-bezier(.15,.8,.32,1),opacity .64s ease}
+.custom-overlay[hidden],.custom-modal[hidden],.feedback-card[hidden],.feedback-reasons[hidden]{display:none!important}
+.custom-overlay{position:fixed;inset:0;background:#1b120db8;z-index:70}
+.custom-modal{position:fixed;z-index:71;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100vw - 24px));max-height:92vh;overflow-y:auto;border-radius:20px;background:#fffaf6;color:#2b2015;box-shadow:0 20px 65px #0005;padding:22px 23px;text-align:start;direction:inherit}
+.custom-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.custom-head h2{font-size:23px;margin:5px 0}
+.custom-eyebrow{font:700 9px Georgia,sans-serif;letter-spacing:2px;color:#ba8e52}
+.custom-close{background:#f2e9dd;border:0;border-radius:50%;width:34px;height:34px;font-size:23px}
+#customItem{font-weight:800;margin:4px 0 8px}
+.custom-sub,.custom-price{color:#766c5c;font-size:12px;line-height:1.7}
+.syrup-options{border:0;margin:14px 0 4px;padding:0;display:grid;gap:8px}.syrup-options legend{font-weight:800;margin-bottom:9px}
+.syrup-option{border:1px solid #e7d6bf;border-radius:12px;padding:11px 12px;display:flex;align-items:center;gap:10px;background:white;cursor:pointer}
+.syrup-option:has(input:checked){border-color:#b88a48;background:#fff4e1}
+.syrup-option input{accent-color:#b38642;width:17px;height:17px}.syrup-option span{flex:1;font-weight:700}.syrup-option small{color:#347754}
+.syrup-option.unavailable{opacity:.56;background:#f3f1ef;cursor:not-allowed}.syrup-option.unavailable small{color:#8a4540}
+.custom-confirm{width:100%;padding:13px;background:#b38642;border:0;border-radius:12px;color:#fff;font-weight:900;font-size:15px}
+.feedback-card{background:#fffbf7;border:1px solid #ead9bd;border-radius:17px;margin:17px 0;padding:17px;text-align:start;box-shadow:0 3px 16px #5c381408}
+.feedback-kicker{font-size:11px;color:#ba8e52;font-weight:900}.feedback-card h4{font-size:20px;margin:7px 0}
+.feedback-hint{font-size:11px;color:#7a6b5b!important}.feedback-prompt{font-size:13px;font-weight:800;margin:17px 0 9px}
+.feedback-choices,.feedback-tags,.feedback-actions{display:flex;flex-wrap:wrap;gap:8px}.feedback-choice,.feedback-tags button{flex:1;border:1px solid #e5d2b8;border-radius:12px;background:#fff;padding:10px 9px;font-weight:800;white-space:nowrap}
+.feedback-choice.active,.feedback-tags button.active{border-color:#b38642;background:#fff0d4;color:#76501c}
+.feedback-reasons p{font-size:12px;color:#766757}.feedback-tags button{font-size:11px;flex:0 1 auto;white-space:normal}
+.service-stars{display:flex;justify-content:center;gap:10px;direction:ltr}
+.service-stars button{border:0;background:transparent;color:#c9c3ba;font-size:35px;padding:2px 4px;line-height:1;cursor:pointer}
+.service-stars button.active{color:#d7a548}.feedback-comment-label{display:block;margin:12px 0 7px;text-align:start;font-size:12px;font-weight:800}
+#feedbackComment{width:100%;border:1px solid #e5d7c6;border-radius:10px;padding:11px;resize:vertical;min-height:66px;background:#fff}
+.feedback-error{font-size:12px;color:#a33c32}.feedback-actions button{flex:1;padding:11px 8px;border:0;border-radius:10px;font-weight:800}
+#sendFeedback{background:#b38642;color:white}#skipFeedback{background:#f1eee8;color:#725b47}
+#newOrder{margin-top:8px}
+@media(max-width:600px){.welcome-note{margin:10px 0;padding:10px 12px}.feedback-card{padding:14px 12px}}
+@media(prefers-reduced-motion:reduce){.fly-to-cart{transition:none!important}#cartButton.cart-pop{animation:none!important}}
+
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -59,11 +97,46 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 </defs></svg>
 <header class="top"><div class="right-actions"><button id="langToggle" type="button" class="lang-toggle" aria-label="Switch to English">English</button><button id="searchButton" class="icon" title="بحث" aria-label="بحث"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg></button></div><div class="logo"><img src="assets/logo.webp" alt="Highway 67 Coffee" /></div><div class="left-actions"><nav class="nav"><a href="#menu" class="active">الطلب</a><a href="#menu">القائمة</a><a href="#about">حولنا</a></nav><button id="cartButton" class="icon" aria-label="سلة الطلبات"><svg viewBox="0 0 26 26"><path d="M2 2h4l3 14h12l3-10H7M9 22h1m10 0h1"/></svg><span class="badge" id="count">0</span></button></div><div id="searchbox" class="searchbox"><input id="searchInput" type="search" placeholder="ابحث عن منتج..." aria-label="بحث عن منتج" /></div></header>
 <div class="order-status" id="storeStatus">عرض القائمة · يتم التأكد من حالة استقبال الطلبات</div><main id="menu"><div class="hero" id="hero"><picture><img src="assets/hero.webp" alt="Highway 67 Coffee — قهوة وكرواسون"/></picture><div class="hero-cover"><div><h1>HIGHWAY 67</h1><small>COFFEE</small><p>Coffee · Croissants · More</p></div><img src="assets/iced.webp" alt="Highway 67 Iced Coffee"></div><button class="previous" id="prevBanner" aria-label="الصورة السابقة">›</button><button class="next" id="nextBanner" aria-label="الصورة التالية">‹</button><div class="dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
+<div class="welcome-note" role="note"><span class="welcome-icon">☕</span><span>نحن كوفي جديد ونسعد بزيارتكم! تحتاج مساعدة في اختيار طلبك؟ كلم النادلة، وبتساعدك بكل سرور.</span></div>
 <section class="offers" id="offers" aria-label="العروض الحالية" hidden></section>
 <div class="tabs"><button class="tab active" data-cat="all"><svg><use href="#i-all"/></svg>الكل</button><button class="tab" data-cat="Hot Drinks"><svg><use href="#i-cup"/></svg>المشروبات الساخنة</button><button class="tab" data-cat="Cold Drinks"><svg><use href="#i-cold"/></svg>المشروبات الباردة</button><button class="tab" data-cat="Croissants"><svg><use href="#i-crois"/></svg>الكرواسون</button></div><div id="sections"></div><div class="footer" id="about"><b>HIGHWAY 67 COFFEE</b> — AL AIN, UAE<br>COFFEE ON THE ROAD</div></main>
+<div id="customOverlay" class="custom-overlay" hidden></div>
+<section id="customModal" class="custom-modal" role="dialog" aria-modal="true" aria-labelledby="customTitle" hidden>
+  <div class="custom-head"><div><span class="custom-eyebrow">HIGHWAY 67 · YOUR DRINK</span><h2 id="customTitle">خصص مشروبك</h2></div><button id="closeCustom" type="button" class="custom-close" aria-label="إغلاق">×</button></div>
+  <p id="customItem"></p><p class="custom-sub">اختر نكهة السيرب — الخيارات غير المتاحة تظهر لك بوضوح.</p>
+  <fieldset class="syrup-options"><legend>إضافات السيرب</legend>
+    <label class="syrup-option"><input type="radio" name="syrup" value="" checked><span>بدون سيرب إضافي</span><small>متوفر</small></label>
+    <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل 🍮</span><small>متوفر</small></label>
+    <label class="syrup-option unavailable"><input type="radio" name="syrup" value="vanilla" disabled><span>فانيلا</span><small>غير متوفر</small></label>
+    <label class="syrup-option unavailable"><input type="radio" name="syrup" value="hazelnut" disabled><span>بندق (هازلنت)</span><small>غير متوفر</small></label>
+    <label class="syrup-option unavailable"><input type="radio" name="syrup" value="chocolate" disabled><span>شوكولاتة</span><small>غير متوفر</small></label>
+  </fieldset><p class="custom-price">السيرب المتاح بدون رسوم إضافية حالياً</p>
+  <button type="button" id="confirmCustom" class="custom-confirm">أضف للسلة <span>＋</span></button>
+</section>
 <div class="overlay" id="overlay"></div><aside class="drawer" id="drawer"><div class="drawer-head"><h2 id="drawerTitle">سلة الطلبات</h2><button class="close" id="closeCart" aria-label="إغلاق">×</button></div>
 <div id="cartStep"><div id="cartItems"></div><button type="button" id="clearCart" class="clearCart" hidden>تفريغ السلة</button><div class="sum"><span>المجموع</span><span id="total">0 AED</span></div><button class="checkout" id="checkout">إتمام الطلب</button><p class="msg">الدفع عند الاستلام. لا يُخصم أي مبلغ من بطاقتك عبر الموقع.</p></div>
 <form id="checkoutForm" class="checkoutForm" hidden><label for="customerName">اسم الزبون</label><input id="customerName" name="customerName" autocomplete="name" required maxlength="65" placeholder="اسمك"><label for="customerPhone">رقم الهاتف</label><input id="customerPhone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="05xxxxxxxx"><label for="customerCar">رقم السيارة</label><input id="customerCar" name="customerCar" required maxlength="32" placeholder="رقم اللوحة / رمز اللوحة"><label for="customerNotes">ملاحظات على الطلب (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: بدون سكر، ثلج أقل..."></textarea><div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div><p class="subnote" id="checkoutError">بعد التأكيد، توصّل الطلبية مباشرة إلى شاشة الموظفين.</p><button id="submitOrder" type="submit">تأكيد وإرسال الطلب</button><button type="button" id="goCart" class="back">الرجوع إلى السلة</button></form>
-<div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3><p id="receiptText"></p><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
+<div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3><p id="receiptText"></p><section class="feedback-card" id="feedbackCard" aria-labelledby="feedbackTitle">
+  <div class="feedback-kicker">رأيك يصنع فرقاً ✨</div><h4 id="feedbackTitle">كيف كانت تجربتك؟</h4>
+  <p class="feedback-hint">التقييم اختياري تماماً؛ تقدر ترجع له بعد ما تجرّب طلبك.</p>
+  <div class="feedback-prompt">هل أعجبك الطلب؟</div>
+  <div class="feedback-choices"><button type="button" data-liked="yes" class="feedback-choice">😍 عجبني!</button><button type="button" data-liked="no" class="feedback-choice">😕 ممكن يتحسن</button></div>
+  <div id="feedbackReasons" class="feedback-reasons" hidden>
+    <p>وش اللي ما عجبك؟ اختار اللي ينطبق عليك:</p>
+    <div class="feedback-tags">
+      <button type="button" data-reason="too_sweet">🍯 حالي زيادة</button>
+      <button type="button" data-reason="not_hot">🧊 الحرارة مب مضبوطة</button>
+      <button type="button" data-reason="taste">😬 الطعم مب مثل المتوقع</button>
+      <button type="button" data-reason="missing">🫤 ناقص إضافة أو طلب</button>
+      <button type="button" data-reason="presentation">📸 الشكل يقدر يتحسن</button>
+      <button type="button" data-reason="other">💬 شي ثاني</button>
+    </div>
+  </div>
+  <div class="feedback-prompt">وش تقييمك للخدمة؟</div>
+  <div class="service-stars" id="serviceStars" role="group" aria-label="تقييم الخدمة من خمسة"><button type="button" data-star="1">★</button><button type="button" data-star="2">★</button><button type="button" data-star="3">★</button><button type="button" data-star="4">★</button><button type="button" data-star="5">★</button></div>
+  <label class="feedback-comment-label" for="feedbackComment">رسالة لنا (اختياري)</label><textarea id="feedbackComment" maxlength="240" placeholder="وش تحب نطور في كوفينا الجديد؟"></textarea>
+  <p class="feedback-error" id="feedbackError" role="alert"></p>
+  <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم 💛</button><button type="button" id="skipFeedback">يمكن مرة ثانية</button></div>
+</section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
-<script src="/i18n.js?v=2" defer></script><script src="/app.js?v=2" defer></script></body></html>
+<script src="/i18n.js?v=3" defer></script><script src="/app.js?v=3" defer></script></body></html>
