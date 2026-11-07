@@ -33,25 +33,12 @@ function render(){if(!data)return;const s=data.shift;
  $('stats').innerHTML=summaryCards(data);const visible=data.orders.filter(o=>selectedState==='all'||o.status===selectedState).sort((a,b)=>({new:0,ready:1,delivered:2,cancelled:3}[a.status]-{new:0,ready:1,delivered:2,cancelled:3}[b.status])||b.id-a.id);
  $('orders').innerHTML=visible.length?visible.map(o=>bill(o,true)).join(''):'<div class="empty">لا توجد طلبات في هذه الوردية بعد.</div>';
  document.querySelectorAll('[data-order]').forEach(b=>b.onclick=()=>advance(Number(b.dataset.order),b.dataset.status));
- document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>cancelOrder(Number(b.dataset.cancel),b));
  $('top').innerHTML=topProducts(data);$('detail').innerHTML=`<div class="kpirow"><span>رقم الوردية</span><b>${s?'#'+s.id:'—'}</b></div><div class="kpirow"><span>طلبات جاهزة</span><b>${data.counts.ready}</b></div><div class="kpirow"><span>طلبات مُسلّمة</span><b>${data.counts.delivered}</b></div><div class="kpirow"><span>صافي مبيعات الوردية</span><b>${fmt(data.sales_fils)}</b></div>`;
  $('archive').innerHTML=(data.shifts||[]).filter(x=>x.ended_at).length?data.shifts.filter(x=>x.ended_at).map(s=>`<article class="shift"><div><strong>${shiftName(s)}</strong><p>انتهى: ${when(s.ended_at)} | ${s.order_count} طلب | ${fmt(s.sales_fils)}</p></div><div class="actions"><button class="button outline sm" data-viewshift="${s.id}">عرض وتعديل</button><button class="button light sm" data-hideshift="${s.id}">إخفاء</button></div></article>`).join(''):'<div class="empty">لا توجد أيام سابقة ظاهرة لك.</div>';
  document.querySelectorAll('[data-viewshift]').forEach(b=>b.onclick=()=>openShift(Number(b.dataset.viewshift)));
  document.querySelectorAll('[data-hideshift]').forEach(b=>b.onclick=()=>hideShift(Number(b.dataset.hideshift),b));
 }
 async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
-async function cancelOrder(id,button){
- const english=window.highway67Language?.get()==='en';
- const message=english
-  ?'Cancel order #'+id+'? The order will remain in history and will not count toward delivered sales.'
-  :'تأكيد إلغاء الطلب رقم '+id+'؟ الطلب يظل محفوظ في السجل ولن يُحسب ضمن المبيعات المسلّمة.';
- if(!window.confirm(message))return;
- button.disabled=true;
- try{
-  await api('/api/staff/orders/'+id+'/cancel','POST',{reason:'غير متوفر'});
-  data=null;await refresh();
- }catch(err){window.alert(err.message)}finally{button.disabled=false}
-}
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
 $('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
