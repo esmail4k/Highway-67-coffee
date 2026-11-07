@@ -42,12 +42,9 @@ async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
 $('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
- const forced=b.dataset.force==='yes';await api('/api/staff/shift/end','POST',{force_cancel_pending:forced});
- b.dataset.force='';b.textContent='إنهاء اليوم';b.classList.remove('red');showLive();data=null;await refresh();
- }catch(e){
- if(e.pending_count){b.dataset.force='yes';b.textContent='تأكيد الإنهاء وإلغاء '+e.pending_count+' طلب';b.classList.add('red');$('refreshLabel').textContent=e.message;}
- else{alert(e.message)}
- }finally{b.disabled=false}};
+ await api('/api/staff/shift/end','POST',{});
+ showLive();data=null;await refresh();
+ }catch(e){$('refreshLabel').textContent=e.message;window.alert(e.message)}finally{b.disabled=false}};
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');$('stockPage').classList.toggle('hidden',selectedPage!=='stock');if(selectedPage==='reviews')loadFeedback();if(selectedPage==='stock')loadStock();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
