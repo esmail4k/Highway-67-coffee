@@ -318,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path=='/api/version':
             return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY})
-        if MENU_ONLY and (path in ('/staff','/staff/','/staff.html','/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version'))):
+        if MENU_ONLY and (path in ('/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version','/api/staff/session'))):
             return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
         if path=='/api/products':
