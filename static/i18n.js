@@ -125,7 +125,35 @@
     ['كمل اختيارك من المنيو بكل راحة','Keep browsing the menu — your item is in the cart'],
     ['عرض السلة','View cart'],
     ['إخفاء','Hide'],
-    ['✓ تمت الإضافة','✓ Added to cart']
+    ['✓ تمت الإضافة','✓ Added to cart'],
+    ['الكراميل: جرعة واحدة، برسوم إضافية 1 درهم لكل مشروب.','Caramel: one shot, AED 1 extra per drink.'],
+    ['كراميل 🍮 — جرعة واحدة','Caramel 🍮 — 1 shot'],['+ كراميل · 1 درهم','+ Caramel · AED 1'],
+    ['+ كراميل (1 درهم)','+ Caramel (AED 1)'],
+    ['ملاحظة خاصة لهذا المنتج (اختياري)','Special notes for this item (optional)'],
+    ['ملاحظة لهذا المنتج (اختياري)','Note for this item (optional)'],
+    ['ملاحظة المنتج:','Item note:'],
+    ['ملاحظات لكل منتج (اختياري)','Notes for each item (optional)'],
+    ['لو تبا مشروب بدون سكر أو عندك طلب خاص، اكتب الملاحظة تحت المنتج.','Need less sugar or another change? Add a note under each item.'],
+    ['مثلاً: بدون سكر، حليب أقل...','For example: no sugar, less milk...'],
+    ['ملاحظات عامة على الطلب (اختياري)','General order notes (optional)'],
+    ['غير متوفر حالياً، احذف هذا المنتج قبل تأكيد الطلب','Unavailable right now. Remove this item before checkout.'],
+    ['في منتج غير متوفر بالسلة، احذفه أولاً','An item in your cart is sold out. Remove it first.'],
+    ['هذا المنتج غير متوفر حالياً','This item is currently unavailable'],
+    ['توفر المنتجات','Product availability'],
+    ['حدّد المنتجات غير المتوفرة، وسيظهر للزبون «غير متوفر» ولن يستطيع طلبها. ويمكنك إرجاع المنتج متى توفر.','Mark items sold out to disable ordering. You can make them available again anytime.'],
+    ['تحديث القائمة','Refresh list'],['جاري تحميل المنتجات...','Loading products...'],
+    ['لا توجد منتجات حالياً.','No products right now.'],
+    ['تعيين غير متوفر','Mark unavailable'],['إعادة التوفر','Make available'],
+    ['تم إرجاع المنتج للمنيو','Product available again on the menu'],
+    ['تم وضع علامة غير متوفر للزبائن','Marked unavailable for customers'],
+    ['إلغاء الطلب','Cancel order'],['سبب الإلغاء:','Cancellation reason:'],
+    ['المنتج غير متوفر','Product unavailable'],
+    ['يمكن إلغاء الطلب الجديد أو الجاهز فقط؛ الطلبات المسلّمة محفوظة','Only new or ready orders can be cancelled. Delivered orders are protected.'],
+    ['حالة المنتج غير صحيحة','Invalid availability selection'],
+    ['المنتج غير موجود','Product not found'],['الكراميل جرعة واحدة فقط','Caramel is limited to one shot'],
+    ['ملاحظة المنتج طويلة أو غير صحيحة','Item note is too long or invalid'],
+    ['هذا المنتج محذوف من القائمة','This product was removed from the menu']
+
 
   ].forEach(function (x) { pair(x[0], x[1]); });
 
