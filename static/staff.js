@@ -1,5 +1,6 @@
 'use strict';
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
+let feedbackLoaded=false;
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('exportOrders').classList.toggle('hidden',yes)}
 $('exportOrders').onclick=()=>{window.location.href='/api/staff/export.csv'};
 let currentChallenge=null;
@@ -38,7 +39,7 @@ function render(){if(!data)return;const s=data.shift;
  document.querySelectorAll('[data-hideshift]').forEach(b=>b.onclick=()=>hideShift(Number(b.dataset.hideshift),b));
 }
 async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
-function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden')}
+function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden')}
 $('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  const forced=b.dataset.force==='yes';await api('/api/staff/shift/end','POST',{force_cancel_pending:forced});
@@ -47,7 +48,7 @@ $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  if(e.pending_count){b.dataset.force='yes';b.textContent='تأكيد الإنهاء وإلغاء '+e.pending_count+' طلب';b.classList.add('red');$('refreshLabel').textContent=e.message;}
  else{alert(e.message)}
  }finally{b.disabled=false}};
-document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');render()});
+document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');if(selectedPage==='reviews')loadFeedback();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
 async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){alert(e.message)}}
@@ -60,3 +61,25 @@ async function hideShift(id,b){
 };
 $('hideShift').onclick=()=>{if(loadedShift)hideShift(loadedShift.shift.id,$('hideShift'))};
 setInterval(()=>refresh(),5000);setInterval(refreshOrderStatus,30000);boot();
+
+const feedbackReasonNames={
+ too_sweet:'حالي زيادة',not_hot:'الحرارة مب مضبوطة',taste:'الطعم مب مثل المتوقع',
+ missing:'ناقص إضافة أو طلب',presentation:'الشكل يقدر يتحسن',other:'شي ثاني'
+};
+async function loadFeedback(){
+ const list=$('reviewsList');list.innerHTML='<div class="empty">Loading...</div>';
+ try{
+  const result=await api('/api/staff/feedback');
+  const entries=result.feedback||[];
+  list.innerHTML=entries.length?entries.map(x=>{
+   const feeling=x.liked===1?'😍 أعجبهم':x.liked===0?'😕 يحتاج تحسين':'— بدون تقييم للطعم';
+   const reasons=(x.reasons||[]).map(r=>feedbackReasonNames[r]||r).join(' · ');
+   const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
+   return `<article class="review-item"><header><strong>#${Number(x.order_id)} · ${feeling}</strong><small>${when(x.created_at)}</small></header>
+    <p><b>الخدمة:</b> <span class="review-stars">${stars}</span></p>
+    ${reasons?`<p>${safe(reasons)}</p>`:''}
+    <p>${x.comment?safe(x.comment):'الزبون ما أضاف ملاحظة'}</p></article>`;
+  }).join(''):'<div class="empty">لا توجد تقييمات حتى الآن.</div>';
+  feedbackLoaded=true;
+ }catch(e){list.innerHTML='<div class="empty">'+safe(e.message)+'</div>';}
+}
