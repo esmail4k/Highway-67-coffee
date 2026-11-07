@@ -1,5 +1,5 @@
 # Reuse the existing Highway 67 service and the ORIGINAL printed QR URL.
-# FREE preview deployment: product pages can be shown but live order taking is disabled.
+# Existing free database stores live orders; free Postgres expires on 2026-12-04.
 # IMPORTANT: free Render filesystem is ephemeral; configure a durable DB/storage before accepting real orders.
 services:
   - type: web
@@ -22,6 +22,11 @@ services:
         value: "1"
       - key: STAFF_PANEL_ENABLED
         value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: highway67-orders-db
+          property: connectionString
+
       - key: REQUIRE_OWNER_SMS_2FA
         value: "1"
       - key: REQUIRE_STAFF_SMS_2FA
