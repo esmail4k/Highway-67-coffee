@@ -728,22 +728,6 @@ class Handler(BaseHTTPRequestHandler):
                 if cur.rowcount==0:return self.sendj(404,{'error':'المنتج غير موجود'})
                 d.commit()
             return self.sendj(200,{'ok':True,'id':pid,'available':available})
-        match=re.fullmatch(r'/api/staff/orders/(\d+)/cancel',path)
-        if match:
-            if not self.auth('staff'):return
-            oid=int(match.group(1))
-            try:reason=textfield(data,'reason',100)
-            except ValueError as e:return self.sendj(400,{'error':str(e)})
-            if not reason:reason='غير متوفر'
-            with LOCK,con() as d:
-                d.execute('BEGIN IMMEDIATE')
-                order=d.execute('SELECT o.status,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
-                if not order:return self.sendj(404,{'error':'الطلب غير موجود'})
-                if order['ended_at'] or order['status'] not in ('new','ready'):
-                    return self.sendj(409,{'error':'يمكن إلغاء الطلب الجديد أو الجاهز فقط؛ الطلبات المسلّمة محفوظة'})
-                d.execute('UPDATE orders SET status=?,cancel_reason=? WHERE id=?',('cancelled',reason,oid))
-                d.commit()
-            return self.sendj(200,{'ok':True,'id':oid,'status':'cancelled'})
         match=re.fullmatch(r'/api/staff/orders/(\d+)/status',path)
         if match:
             if not self.auth('staff'):return
