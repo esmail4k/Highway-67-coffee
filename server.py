@@ -41,8 +41,8 @@ UAE=ZoneInfo('Asia/Dubai')
 LOCK=threading.RLock()
 ATTEMPTS=defaultdict(deque)
 PBKDF2_ITERATIONS=320000
-# Placeholder pricing follows the user's *visual reference*, and remains explicitly unapproved.
-SEED=[('piccolo','بيكولو','Hot Drinks',18,'hot.webp'),('cortado','كورتادو','Hot Drinks',20,'hot.webp'),('flat','فلات وايت','Hot Drinks',22,'hot.webp'),('latte','لاتيه','Hot Drinks',24,'hot.webp'),('cap','كابتشينو','Hot Drinks',24,'hot.webp'),('americano','أمريكانو','Hot Drinks',18,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',26,'hot.webp'),('mojito','موهيتو','Cold Drinks',26,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',25,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',24,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',26,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',24,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',20,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',26,'iced.webp'),('cheese','كرواسون جبن','Croissants',18,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',20,'nutella.webp'),('chips','كرواسون شيبس','Croissants',20,'chips.webp')]
+# Confirmed Highway 67 menu prices (AED), November 2026.
+SEED=[('piccolo','بيكولو','Hot Drinks',15.99,'hot.webp'),('cortado','كورتادو','Hot Drinks',15.99,'hot.webp'),('flat','فلات وايت','Hot Drinks',15.99,'hot.webp'),('latte','لاتيه','Hot Drinks',15.99,'hot.webp'),('cap','كابتشينو','Hot Drinks',15.99,'hot.webp'),('americano','أمريكانو','Hot Drinks',15.99,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',16.99,'hot.webp'),('mojito','موهيتو','Cold Drinks',15.99,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',15.99,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',15.99,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',16.99,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',15.99,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',15.99,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',15.99,'iced.webp'),('cheese','كرواسون جبن','Croissants',12,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',13,'nutella.webp'),('chips','كرواسون شيبس','Croissants',13,'chips.webp')]
 CATEGORIES={'Hot Drinks','Cold Drinks','Croissants','Desserts','Other'}
 
 def utcnow():return datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -124,6 +124,12 @@ def init():
         add_column(d,'order_items','original_fils','INTEGER')
         add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
+        # Apply the requested price list once to previously initialized databases.
+        # Future owner edits are preserved across subsequent restarts.
+        if d.execute('PRAGMA user_version').fetchone()[0] < 8:
+            d.executemany('UPDATE products SET price_fils=? WHERE id=?',
+                [(round(price*100),pid) for pid,_,_,price,_ in SEED])
+            d.execute('PRAGMA user_version=8')
         # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
         if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
             salt,digest=hash_staff_password(STAFF_PASS)
