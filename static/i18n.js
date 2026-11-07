@@ -88,7 +88,36 @@
     ['تعذر إرسال رمز التحقق، حاول لاحقاً','Could not send verification code. Try again.'],
     ['اسم المستخدم أو كلمة المرور غير صحيحة','Incorrect username or password'],
     ['رمز التحقق غير صحيح','Incorrect verification code'],
-    ['محاولات كثيرة، حاول لاحقاً','Too many attempts. Try again later.']
+    ['محاولات كثيرة، حاول لاحقاً','Too many attempts. Try again later.'],
+    ['كرواسون سادة','Plain croissant'],['كرواسون جبس جبن','Cheese and chips croissant'],
+    ['نحن كوفي جديد ونسعد بزيارتكم! تحتاج مساعدة في اختيار طلبك؟ كلم النادلة، وبتساعدك بكل سرور.','We are a new coffee shop! Need help choosing? Ask our waitress — she will be happy to help.'],
+    ['خصص مشروبك','Customize your drink'],['اختر نكهة السيرب — الخيارات غير المتاحة تظهر لك بوضوح.','Choose a syrup flavor. Unavailable options are shown below.'],
+    ['إضافات السيرب','Syrup options'],['بدون سيرب إضافي','No extra syrup'],['متوفر','Available'],
+    ['كراميل 🍮','Caramel 🍮'],['كراميل','Caramel'],['+ كراميل','+ Caramel'],['فانيلا','Vanilla'],
+    ['بندق (هازلنت)','Hazelnut'],['شوكولاتة','Chocolate'],['غير متوفر','Unavailable'],
+    ['السيرب المتاح بدون رسوم إضافية حالياً','The available syrup is included at no extra charge for now'],
+    ['أضف للسلة','Add to cart'],
+    ['رأيك يصنع فرقاً ✨','Your feedback matters ✨'],['كيف كانت تجربتك؟','How was your experience?'],
+    ['التقييم اختياري تماماً؛ تقدر ترجع له بعد ما تجرّب طلبك.','Feedback is completely optional. You can rate after trying your order.'],
+    ['هل أعجبك الطلب؟','Did you enjoy your order?'],['😍 عجبني!','😍 Loved it!'],
+    ['😕 ممكن يتحسن','😕 Could be better'],['وش اللي ما عجبك؟ اختار اللي ينطبق عليك:','What could be better? Pick what fits:'],
+    ['🍯 حالي زيادة','🍯 Too sweet'],['🧊 الحرارة مب مضبوطة','🧊 Wrong temperature'],
+    ['😬 الطعم مب مثل المتوقع','😬 Taste was not as expected'],['🫤 ناقص إضافة أو طلب','🫤 Missing an item or an extra'],
+    ['📸 الشكل يقدر يتحسن','📸 Presentation could improve'],['💬 شي ثاني','💬 Something else'],
+    ['وش تقييمك للخدمة؟','How was the service?'],['تقييم الخدمة من خمسة','Rate service out of five'],
+    ['رسالة لنا (اختياري)','Leave a note (optional)'],['وش تحب نطور في كوفينا الجديد؟','What should we improve at our new coffee shop?'],
+    ['إرسال التقييم 💛','Send feedback 💛'],['يمكن مرة ثانية','Maybe later'],
+    ['اختر تقييم واحد على الأقل أو اضغط يمكن مرة ثانية','Choose a rating, or tap Maybe later'],
+    ['تعذر التحقق من رقم الطلب','Could not verify your order'],['تعذر حفظ التقييم','Could not save your feedback'],
+    ['💛 شكراً من القلب! تقييمك وصلنا','💛 Thank you! Your feedback has been saved'],
+    ['تقييمات الزبائن','Guest feedback'],['آخر التقييمات','Recent feedback'],
+    ['لا توجد تقييمات حتى الآن.','No feedback yet.'],['الخدمة','Service'],
+    ['أعجبهم','Liked it'],['يحتاج تحسين','Needs improvement'],['بدون تقييم للطعم','No product rating'],
+    ['حالي زيادة','Too sweet'],['الحرارة مب مضبوطة','Temperature was not right'],
+    ['الطعم مب مثل المتوقع','Taste was not as expected'],['ناقص إضافة أو طلب','Missing item or extra'],
+    ['الشكل يقدر يتحسن','Presentation needs improvement'],['شي ثاني','Something else'],
+    ['الزبون ما أضاف ملاحظة','No additional comment']
+
   ].forEach(function (x) { pair(x[0], x[1]); });
 
   function convertName(value, dest) {
@@ -99,6 +128,8 @@
     var m;
     if (dest === 'en') {
       if ((m = /^خصم (\d+)%$/.exec(value))) return m[1] + '% off';
+      if ((m = /^تمت إضافة (.+) · كراميل إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' + Caramel to cart';
+      if ((m = /^(.+) · (\\d+(?:\\.\\d+)? AED)$/.exec(value))) return convertName(m[1], 'en') + ' · ' + m[2];
       if ((m = /^تمت إضافة (.+) إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' to cart';
       if ((m = /^حذف (.+) من السلة$/.exec(value))) return 'Remove ' + convertName(m[1], 'en') + ' from cart';
       if ((m = /^رقم طلبك #(\d+) — الإجمالي (.+)\. وصل الطلب إلى شاشة الموظفين\.$/.exec(value)))
