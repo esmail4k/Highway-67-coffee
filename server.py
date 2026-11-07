@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 from PIL import Image, UnidentifiedImageError
+from durable_sqlite import DurableSQLite
 
 ROOT=Path(__file__).resolve().parent
 STATIC=ROOT/'static'
@@ -47,12 +48,9 @@ CATEGORIES={'Hot Drinks','Cold Drinks','Croissants','Desserts','Other'}
 
 def utcnow():return datetime.now(timezone.utc).isoformat(timespec='seconds')
 def localnow():return datetime.now(UAE)
+STORE=DurableSQLite(DB,os.environ.get('DATABASE_URL',''),LOCK)
 def con():
-    db=sqlite3.connect(DB,timeout=20)
-    db.row_factory=sqlite3.Row
-    db.execute('PRAGMA busy_timeout=20000')
-    db.execute('PRAGMA foreign_keys=ON')
-    return db
+    return STORE.connect()
 
 def add_column(db,table,col,definition):
     if col not in [row['name'] for row in db.execute(f'PRAGMA table_info({table})')]:db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
@@ -142,6 +140,10 @@ def init():
             salt,digest=hash_staff_password(STAFF_PASS)
             d.execute('INSERT INTO staff_accounts(username,salt,digest,created_at) VALUES(?,?,?,?)',
                 (STAFF_USER,salt,digest,utcnow()))
+        # Open the very first shift when orders go live; existing shifts remain under staff control.
+        if REAL_ORDERS and os.environ.get('AUTO_START_FIRST_SHIFT','1')=='1' and not d.execute('SELECT 1 FROM shifts LIMIT 1').fetchone():
+            d.execute('INSERT INTO shifts(local_date,started_at,label) VALUES(?,?,?)',
+                (localnow().date().isoformat(),utcnow(),'أول يوم عمل'))
 init()
 
 def row(x):return dict(x) if x is not None else None
@@ -398,8 +400,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
         path=urlsplit(self.path).path
-        if MENU_ONLY and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
-            return self.sendj(503,{'error':'استقبال طلبات الزبائن متوقف حالياً'})
+        if MENU_ONLY and path!='/api/orders' and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
+            return self.sendj(503,{'error':'هذه الخدمة متوقفة حالياً'})
         if not self.same_origin():return self.sendj(403,{'error':'مصدر الطلب غير مسموح'})
         data=self.readj()
         if data is None:return self.sendj(400,{'error':'البيانات غير صحيحة'})
@@ -706,7 +708,7 @@ if __name__=='__main__':
         print('SECURITY NOTICE: SMS 2FA is required but not configured. Management login will be blocked until configured.',flush=True)
     if HOST not in ('127.0.0.1','localhost','::1') and not REQUIRE_OWNER_SMS_2FA:
         raise SystemExit('Owner SMS 2FA is mandatory for public-facing service. Set REQUIRE_OWNER_SMS_2FA=1.')
-    if REAL_ORDERS and os.environ.get('RENDER') and not os.environ.get('DATA_DIR'):
-        raise SystemExit('A durable DATA_DIR must be configured for real orders on Render.')
+    if REAL_ORDERS and os.environ.get('RENDER') and not (os.environ.get('DATABASE_URL') or os.environ.get('DATA_DIR')):
+        raise SystemExit('A durable DATABASE_URL or DATA_DIR must be configured for real orders on Render.')
     print(f'HIGHWAY 67 running at http://{HOST}:{PORT}; orders_enabled={REAL_ORDERS}',flush=True)
     ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()
