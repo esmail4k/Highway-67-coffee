@@ -2,6 +2,13 @@
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes)}
 let currentChallenge=null;
+async function refreshOrderStatus(){
+ try{
+  const status=await api('/api/shift');
+  $('staffPaused').classList.toggle('hidden',Boolean(status.orders_enabled));
+ }catch{$('staffPaused').classList.add('hidden')}
+}
+
 function otpStep(challenge){currentChallenge=challenge;$('loginForm').classList.add('hidden');$('verifyForm').classList.remove('hidden');$('otpCode').focus()}
 function resetLoginStep(){currentChallenge=null;$('loginForm').classList.remove('hidden');$('verifyForm').classList.add('hidden');$('otpCode').value='';$('password').value=''}
 $('backToLogin').onclick=()=>{resetLoginStep();$('loginError').textContent=''};
@@ -16,7 +23,7 @@ $('verifyForm').onsubmit=async e=>{e.preventDefault();if(!currentChallenge)retur
  }catch(e){$('loginError').textContent=e.message}finally{$('verifyBtn').disabled=false}};
 
 $('logout').onclick=async()=>{await api('/api/staff/logout','POST',{}).catch(()=>{});data=null;loginVisible(true)};
-async function boot(){try{const r=await api('/api/staff/session');loginVisible(!r.authenticated);if(r.authenticated)await refresh()}catch{loginVisible(true)}}
+async function boot(){await refreshOrderStatus();try{const r=await api('/api/staff/session');loginVisible(!r.authenticated);if(r.authenticated)await refresh()}catch{loginVisible(true)}}
 async function refresh(){if(updating||!$('loginScreen').classList.contains('hidden'))return;updating=true;try{let latest=await api('/api/staff/overview');if(data){const before=new Set((data.orders||[]).map(x=>x.id));const added=(latest.orders||[]).filter(x=>!before.has(x.id));$('refreshLabel').textContent=added.length?`وصل ${added.length} طلب جديد`:'تحديث تلقائي كل 5 ثوانٍ'}data=latest;render()}catch(e){if(e.message.includes('دخول'))loginVisible(true);else $('refreshLabel').textContent=e.message}finally{updating=false}}
 function render(){if(!data)return;const s=data.shift;
  $('shiftStatus').textContent=s?'الوردية #'+s.id+' مفتوحة':'اليوم مغلق — ابدأ يوماً جديداً';$('shiftStatus').classList.toggle('on',!!s);
@@ -51,4 +58,4 @@ async function hideShift(id,b){
  try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){alert(e.message)}
 };
 $('hideShift').onclick=()=>{if(loadedShift)hideShift(loadedShift.shift.id,$('hideShift'))};
-setInterval(()=>refresh(),5000);boot();
+setInterval(()=>refresh(),5000);setInterval(refreshOrderStatus,30000);boot();
