@@ -12,7 +12,7 @@ function qty(){return Object.values(cart).reduce((a,n)=>a+n,0)}
 function sum(){return products.filter(p=>cart[p.id]>0).reduce((a,p)=>a+finalPrice(p)*cart[p.id],0)}
 function renderCards(){
  const sections=groups.filter(([id])=>selection==='all'||selection===id).map(([id,label,icon])=>{
- const matches=products.filter(p=>p.category===id&&p.available&&normalized(p.name+' '+p.id+' '+id).includes(search));
+ const matches=products.filter(p=>p.category===id&&p.available&&normalized(p.name+' '+p.id+' '+id+' '+(window.highway67Language ? window.highway67Language.productName(p.name) : '')).includes(search));
  if(!matches.length)return '';
  const cards=matches.map(p=>{
  const disc=Number(p.effective_discount||0),sale=disc>0;
