@@ -26,11 +26,13 @@ PORT=int(os.environ.get('PORT','8080'))
 HOST=os.environ.get('HOST','127.0.0.1')
 REAL_ORDERS=os.environ.get('ENABLE_REAL_ORDERS','0')=='1'
 MENU_ONLY=os.environ.get('PUBLIC_MENU_ONLY','0')=='1'
+OWNER_PANEL_ENABLED=os.environ.get('OWNER_PANEL_ENABLED','0')=='1'
 STAFF_PANEL_ENABLED=os.environ.get('STAFF_PANEL_ENABLED','1')=='1'
 STAFF_USER=os.environ.get('STAFF_USERNAME','admin123')
 STAFF_PASS=os.environ.get('STAFF_PASSWORD','')
 OWNER_USER=os.environ.get('OWNER_USERNAME','esmail')
 OWNER_PASS=os.environ.get('OWNER_PASSWORD','')
+OWNER_TOTP_SECRET=os.environ.get('OWNER_TOTP_SECRET','').strip().upper()
 SECRET=os.environ.get('SESSION_SECRET','')
 OWNER_PHONE_E164=os.environ.get('OWNER_PHONE_E164','').strip()
 SMS_ACCOUNT_SID=os.environ.get('TWILIO_ACCOUNT_SID','').strip()
@@ -54,6 +56,22 @@ def con():
 
 def add_column(db,table,col,definition):
     if col not in [row['name'] for row in db.execute(f'PRAGMA table_info({table})')]:db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {definition}')
+
+
+def owner_totp_counter(code):
+    """Match a six-digit RFC 6238 authenticator code; tolerate +/- 30 s clock skew."""
+    if not re.fullmatch(r'\\d{6}',str(code)):return None
+    try:
+        secret=base64.b32decode(OWNER_TOTP_SECRET+'='*((-len(OWNER_TOTP_SECRET))%8),casefold=True)
+        if len(secret)<16:return None
+    except (ValueError,base64.binascii.Error):return None
+    now=int(time.time()//30)
+    for step in (now-1,now,now+1):
+        raw=hmac.new(secret,step.to_bytes(8,'big'),hashlib.sha1).digest()
+        offset=raw[-1]&15
+        value=(int.from_bytes(raw[offset:offset+4],'big')&0x7fffffff)%1000000
+        if hmac.compare_digest(f'{value:06d}',code):return step
+    return None
 
 def hash_staff_password(password):
     salt=secrets.token_bytes(18)
@@ -114,6 +132,7 @@ def init():
         CREATE TABLE IF NOT EXISTS login_challenges (id TEXT PRIMARY KEY,role TEXT NOT NULL,
           username TEXT NOT NULL,staff_id INTEGER,expires_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
         CREATE INDEX IF NOT EXISTS challenge_expiry ON login_challenges(expires_at);
+        CREATE TABLE IF NOT EXISTS security_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         ''')
         # Safe migration from v4 if its database is supplied in DATA_DIR.
         add_column(d,'products','discount_percent','INTEGER NOT NULL DEFAULT 0')
@@ -388,8 +407,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if path=='/api/version':
-            return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY,'staff_panel_enabled':STAFF_PANEL_ENABLED})
-        if MENU_ONLY and (path in ('/owner','/owner/','/owner.html') or (path in ('/staff','/staff/','/staff.html') and not STAFF_PANEL_ENABLED) or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')))):
+            return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY,'staff_panel_enabled':STAFF_PANEL_ENABLED,'owner_panel_enabled':OWNER_PANEL_ENABLED})
+        if MENU_ONLY and ((path in ('/owner','/owner/','/owner.html') and not OWNER_PANEL_ENABLED) or (path in ('/staff','/staff/','/staff.html') and not STAFF_PANEL_ENABLED) or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')) and not (OWNER_PANEL_ENABLED and path.startswith('/api/owner/')))):
             return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
         if path=='/api/products':
@@ -503,7 +522,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
         path=urlsplit(self.path).path
-        if MENU_ONLY and path not in ('/api/orders','/api/feedback') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
+        if MENU_ONLY and path not in ('/api/orders','/api/feedback') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')) and not (OWNER_PANEL_ENABLED and path.startswith('/api/owner/')):
             return self.sendj(503,{'error':'هذه الخدمة متوقفة حالياً'})
         if not self.same_origin():return self.sendj(403,{'error':'مصدر الطلب غير مسموح'})
         data=self.readj()
@@ -532,8 +551,11 @@ class Handler(BaseHTTPRequestHandler):
             if not valid:
                 time.sleep(.25);return self.sendj(401,{'error':'اسم المستخدم أو كلمة المرور غير صحيحة'})
             required=REQUIRE_OWNER_SMS_2FA if role=='owner' else REQUIRE_STAFF_SMS_2FA
-            if required:
-                if not twilio_ready():return self.sendj(503,{'error':'التحقق برسالة SMS غير مهيأ على الخادم بعد؛ لن يتم فتح لوحة الإدارة قبل ضبطه'})
+            method='totp' if role=='owner' and OWNER_TOTP_SECRET else ('sms' if required else 'none')
+            if role=='owner' and not OWNER_PANEL_ENABLED:
+                return self.sendj(503,{'error':'صفحة المالك غير مفعّلة'})
+            if method!='none':
+                if method=='sms' and not twilio_ready():return self.sendj(503,{'error':'رمز التحقق غير مهيأ على الخادم بعد'})
                 with LOCK,con() as d:
                     d.execute('DELETE FROM login_challenges WHERE expires_at<?',(int(time.time()),))
                     # Limit one outstanding code per identity and limit repeated sends via login rate checks.
@@ -541,13 +563,14 @@ class Handler(BaseHTTPRequestHandler):
                     challenge=secrets.token_urlsafe(28)
                     d.execute('INSERT INTO login_challenges(id,role,username,staff_id,expires_at) VALUES(?,?,?,?,?)',
                         (challenge,role,username,staff_id,int(time.time())+600))
-                try:
-                    if not send_owner_sms():raise RuntimeError('تعذر إرسال رمز SMS')
-                except RuntimeError:
-                    with con() as d:d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
-                    return self.sendj(503,{'error':'تعذر إرسال رمز التحقق، حاول لاحقاً'})
+                if method=='sms':
+                    try:
+                        if not send_owner_sms():raise RuntimeError('تعذر إرسال رمز SMS')
+                    except RuntimeError:
+                        with con() as d:d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
+                        return self.sendj(503,{'error':'تعذر إرسال رمز التحقق، حاول لاحقاً'})
                 return self.sendj(202,{'requires_verification':True,'challenge_id':challenge,
-                    'message':'أرسلنا رمز تحقق إلى هاتف المالك المسجل'})
+                    'message':'أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة' if method=='totp' else 'أرسلنا رمز تحقق إلى هاتف المالك المسجل'})
             # SMS may be disabled only by the operator for trusted local testing.
             if role=='staff':
                 with con() as d:d.execute('UPDATE staff_accounts SET last_login_at=? WHERE id=?',(utcnow(),staff_id))
@@ -571,6 +594,21 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('UPDATE login_challenges SET attempts=attempts+1 WHERE id=?',(challenge,))
                 staff_id=c['staff_id']
                 d.commit()
+            if role=='owner' and OWNER_TOTP_SECRET:
+                matched=owner_totp_counter(code)
+                if matched is None:return self.sendj(401,{'error':'رمز تطبيق المصادقة غير صحيح'})
+                with LOCK,con() as d:
+                    d.execute('BEGIN IMMEDIATE')
+                    active=d.execute('SELECT expires_at FROM login_challenges WHERE id=? AND role=?',(challenge,'owner')).fetchone()
+                    if not active or active['expires_at']<time.time():
+                        return self.sendj(401,{'error':'انتهت صلاحية التحقق؛ سجّل الدخول مجدداً'})
+                    used=d.execute('SELECT value FROM security_state WHERE key=?',('owner_totp_last_step',)).fetchone()
+                    if used and matched<=int(used['value']):
+                        return self.sendj(401,{'error':'هذا الرمز استخدم بالفعل، انتظر الرمز التالي'})
+                    d.execute('INSERT OR REPLACE INTO security_state(key,value) VALUES(?,?)',('owner_totp_last_step',str(matched)))
+                    d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
+                    d.commit()
+                return self.sendj(200,{'ok':True},[self.login_cookie('owner')])
             if not twilio_ready():return self.sendj(503,{'error':'خدمة التحقق غير متاحة'})
             try:approved=check_owner_sms(code)
             except RuntimeError:return self.sendj(503,{'error':'تعذر فحص رمز التحقق، حاول لاحقاً'})
@@ -871,10 +909,12 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     if (not OWNER_PASS and not MENU_ONLY) or len(SECRET)<32:
         raise SystemExit('Set OWNER_PASSWORD for admin access and a 32+ character SESSION_SECRET before running the server.')
-    if (REQUIRE_OWNER_SMS_2FA or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
+    if ((REQUIRE_OWNER_SMS_2FA and not OWNER_TOTP_SECRET) or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
         print('SECURITY NOTICE: SMS 2FA is required but not configured. Management login will be blocked until configured.',flush=True)
-    if HOST not in ('127.0.0.1','localhost','::1') and not REQUIRE_OWNER_SMS_2FA:
-        raise SystemExit('Owner SMS 2FA is mandatory for public-facing service. Set REQUIRE_OWNER_SMS_2FA=1.')
+    if HOST not in ('127.0.0.1','localhost','::1') and OWNER_PANEL_ENABLED and not (OWNER_TOTP_SECRET or (REQUIRE_OWNER_SMS_2FA and twilio_ready())):
+        raise SystemExit('Owner 2FA is mandatory on the public service (TOTP or configured SMS).')
+    if OWNER_PANEL_ENABLED and not OWNER_PASS:
+        raise SystemExit('Owner password required before enabling owner panel.')
     if REAL_ORDERS and os.environ.get('RENDER') and not (os.environ.get('DATABASE_URL') or os.environ.get('DATA_DIR')):
         raise SystemExit('A durable DATABASE_URL or DATA_DIR must be configured for real orders on Render.')
     print(f'HIGHWAY 67 running at http://{HOST}:{PORT}; orders_enabled={REAL_ORDERS}',flush=True)
