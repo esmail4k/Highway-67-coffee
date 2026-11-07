@@ -405,8 +405,8 @@ class Handler(BaseHTTPRequestHandler):
                          FROM orders o JOIN shifts s ON s.id=o.shift_id
                          ORDER BY o.id DESC''')]
                 for o in orders:
-                    items=d.execute('SELECT name,qty FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
-                    o['items']=' | '.join(str(i['qty'])+' × '+i['name'] for i in items)
+                    items=d.execute('SELECT name,qty,syrup FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
+                    o['items']=' | '.join(str(i['qty'])+' × '+i['name']+(' + كراميل' if i['syrup']=='caramel' else '') for i in items)
             out=io.StringIO()
             w=csv.writer(out)
             w.writerow(['رقم الطلب','تاريخ الطلب','يوم العمل','اسم الزبون','الهاتف',
@@ -648,7 +648,7 @@ class Handler(BaseHTTPRequestHandler):
             liked=data.get('liked');reasons=data.get('reasons',[])
             score=data.get('service_score');comment=data.get('comment','')
             if (type(order_id)!=int or order_id<1 or not isinstance(token,str) or len(token)>160
-                    or liked not in (None,True,False) or not isinstance(reasons,list)
+                    or (liked is not None and type(liked)!=bool) or not isinstance(reasons,list)
                     or len(reasons)>5 or not isinstance(comment,str) or len(comment)>240
                     or (score is not None and (type(score)!=int or not 1<=score<=5))):
                 return self.sendj(400,{'error':'الرجاء مراجعة التقييم'})
