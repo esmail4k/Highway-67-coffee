@@ -116,7 +116,16 @@
     ['حالي زيادة','Too sweet'],['الحرارة مب مضبوطة','Temperature was not right'],
     ['الطعم مب مثل المتوقع','Taste was not as expected'],['ناقص إضافة أو طلب','Missing item or extra'],
     ['الشكل يقدر يتحسن','Presentation needs improvement'],['شي ثاني','Something else'],
-    ['الزبون ما أضاف ملاحظة','No additional comment']
+    ['الزبون ما أضاف ملاحظة','No additional comment'],
+    ['كم جرعة كراميل تبا؟','How many caramel shots?'],
+    ['تقدر تختار من 1 إلى 5 جرعات','Choose from 1 to 5 shots'],
+    ['عدد جرعات الكراميل','Caramel shots'],
+    ['تقليل الكراميل','Less caramel'],
+    ['زيادة الكراميل','More caramel'],
+    ['كمل اختيارك من المنيو بكل راحة','Keep browsing the menu — your item is in the cart'],
+    ['عرض السلة','View cart'],
+    ['إخفاء','Hide'],
+    ['✓ تمت الإضافة','✓ Added to cart']
 
   ].forEach(function (x) { pair(x[0], x[1]); });
 
@@ -128,6 +137,9 @@
     var m;
     if (dest === 'en') {
       if ((m = /^خصم (\d+)%$/.exec(value))) return m[1] + '% off';
+      if ((m = /^✓ (.+?)(?: \+ كراميل × ([1-5]))? تمت إضافته للسلة$/.exec(value)))
+        return '✓ ' + convertName(m[1],'en') + (m[2]?' + Caramel × '+m[2]:'') + ' added to cart';
+      if ((m = /^\+ كراميل × ([1-5])$/.exec(value))) return '+ Caramel × ' + m[1];
       if ((m = /^تمت إضافة (.+) · كراميل إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' + Caramel to cart';
       if ((m = /^(.+) · (\\d+(?:\\.\\d+)? AED)$/.exec(value))) return convertName(m[1], 'en') + ' · ' + m[2];
       if ((m = /^تمت إضافة (.+) إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' to cart';
