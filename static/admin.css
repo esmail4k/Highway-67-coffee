@@ -18,3 +18,9 @@ form label{font-size:12px;font-weight:800;display:block;margin:13px 0 7px}input,
 .staffPaused{background:#fff9f0;border:1px solid #e6cda8;border-right:4px solid #b78b47;border-radius:14px;padding:14px 18px;margin-bottom:19px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:#684821;line-height:1.8}
 .staffPaused strong{font-size:14px}.staffPaused span{font-size:12px;color:#795b38}
 @media(max-width:650px){.staffPaused{padding:12px 13px;align-items:flex-start;flex-direction:column;gap:3px}}
+
+/* Language toggle shared by the public/staff interface. */
+.lang-toggle{border:1px solid #d4bea0;border-radius:18px;padding:8px 12px;background:#fff;color:#92692c;font-size:12px;font-weight:900;min-width:68px;white-space:nowrap;line-height:1.2}
+.lang-toggle:focus-visible{outline:3px solid #b48c45;outline-offset:2px}
+html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
+@media(max-width:700px){.lang-toggle{min-width:60px;padding:7px 9px}.headtools{gap:6px;flex-wrap:wrap;justify-content:flex-end}.headtools span{font-size:10px}}
