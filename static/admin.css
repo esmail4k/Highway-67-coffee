@@ -24,3 +24,12 @@ form label{font-size:12px;font-weight:800;display:block;margin:13px 0 7px}input,
 .lang-toggle:focus-visible{outline:3px solid #b48c45;outline-offset:2px}
 html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 @media(max-width:700px){.lang-toggle{min-width:60px;padding:7px 9px}.headtools{gap:6px;flex-wrap:wrap;justify-content:flex-end}.headtools span{font-size:10px}}
+
+/* Staff guest feedback view and custom syrup details. */
+.order-syrup{display:block;width:max-content;border:1px solid #e4c89e;background:#fff1d9;color:#754a1f;padding:3px 8px;margin:5px 0;border-radius:12px;font-weight:800;font-size:11px}
+.reviews-list{display:grid;gap:12px}
+.review-item{border:1px solid #ece0d2;border-radius:14px;padding:16px;background:#fffdf9}
+.review-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.review-head strong{font-size:14px}.review-head small{font-size:11px;color:#8f7e6b}
+.review-item p{margin:8px 0 0;color:#4f4033;font-size:12px;line-height:1.7}
+.review-stars{color:#d4a24c;font-size:18px;letter-spacing:2px}
