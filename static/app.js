@@ -110,7 +110,7 @@ $('checkoutForm').onsubmit=async e=>{
   const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
   $('receiptText').textContent=`رقم طلبك #${result.id} — الإجمالي ${money(result.total_fils)}. وصل الطلب إلى شاشة الموظفين.`;
   feedbackToken=result.feedback_token||null;feedbackOrderId=result.id;resetFeedback();
-  cart={};renderCart();step('success');
+  cart={};renderCart();step('success');$('drawer').scrollTop=0;
  }catch(err){$('checkoutError').textContent=err.message}finally{$('submitOrder').disabled=false}
 };
 
