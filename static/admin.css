@@ -33,3 +33,20 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 .review-head strong{font-size:14px}.review-head small{font-size:11px;color:#8f7e6b}
 .review-item p{margin:8px 0 0;color:#4f4033;font-size:12px;line-height:1.7}
 .review-stars{color:#d4a24c;font-size:18px;letter-spacing:2px}
+
+/* Staff availability controls, per-item preparation notes, and cancelled orders */
+.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:11px;margin-top:16px}
+.stock-product{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding:15px 14px;border:1px solid #e8dccd;border-radius:13px;background:#fffcf8}
+.stock-product.stock-unavailable{border-color:#e2b7a9;background:#fff7f4}
+.stock-product-name{flex:1 1 100%;min-width:0}
+.stock-product-name strong{font-size:14px;display:block;overflow-wrap:anywhere}
+.stock-product-name small{font-size:11px;display:block;margin-top:4px;color:#887765}
+.stock-state{font-size:11px;font-weight:900;border-radius:15px;padding:6px 9px;white-space:nowrap}
+.stock-on{background:#e2f5e8;color:#25744e}
+.stock-off{background:#fbe5de;color:#9b4932}
+.stock-product .button{margin-inline-start:auto}
+.stock-status{color:#67543e;font-size:12px;min-height:16px;margin-top:8px}
+.item-note{padding:8px 10px;margin-top:8px;border-inline-start:3px solid #b48b46;background:#fff2dc;color:#55402a;border-radius:7px;line-height:1.6;font-size:12px;overflow-wrap:anywhere}
+.item-note b{display:block;margin-bottom:3px}
+.bill .actions .button.red{background:#b95548;color:#fff}
+@media(max-width:650px){.stock-grid{grid-template-columns:1fr}.stock-product{padding:12px}}
