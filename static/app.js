@@ -84,12 +84,18 @@ function showCartConfirm(p,shots,source){
  clearTimeout(confirmTimer);
  confirmTimer=setTimeout(()=>{banner.hidden=true},4300);
  if(source&&source.isConnected){
-  const original=source.textContent;
+  if(!source.dataset.addOriginal)source.dataset.addOriginal=source.textContent;
+  const mark=String(Number(source.dataset.addMark||0)+1);
+  source.dataset.addMark=mark;
   source.textContent='✓ تمت الإضافة';
   source.classList.add('added');
   source.closest('.product')?.classList.add('just-added');
   setTimeout(()=>{
-   if(source.isConnected){source.textContent=original;source.classList.remove('added');source.closest('.product')?.classList.remove('just-added')}
+   if(source.isConnected&&source.dataset.addMark===mark){
+    source.textContent=source.dataset.addOriginal;
+    source.classList.remove('added');
+    source.closest('.product')?.classList.remove('just-added');
+   }
   },1350);
  }
 }
