@@ -1,6 +1,7 @@
 'use strict';
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
-function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes)}
+function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('exportOrders').classList.toggle('hidden',yes)}
+$('exportOrders').onclick=()=>{window.location.href='/api/staff/export.csv'};
 let currentChallenge=null;
 async function refreshOrderStatus(){
  try{
