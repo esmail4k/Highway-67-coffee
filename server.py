@@ -512,7 +512,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.sendj(200,{'feedback':feedback})
         if path=='/api/owner/products':
             if not self.auth('owner'):return
-            with con() as d:result=[dict(p) for p in d.execute('SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid')]
+            with con() as d:result=[dict(p) for p in d.execute("SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid")]
             return self.sendj(200,{'products':result})
         if path=='/api/owner/staff/accounts':
             if not self.auth('owner'):return
