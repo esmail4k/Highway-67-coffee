@@ -270,7 +270,7 @@ def catalog(d):
     shown=[]
     active_ids={p['product_id'] for p in active}
     for p in products:
-        if not p['available'] or (p['promo_only'] and p['id'] not in active_ids):continue
+        if p['promo_only'] and p['id'] not in active_ids:continue
         if p['id']=='piccolo':continue
         p['effective_discount']=max(p['discount_percent'],linked.get(p['id'],0))
         p['final_price_fils']=(p['price_fils']*(100-p['effective_discount'])+50)//100
@@ -279,7 +279,7 @@ def catalog(d):
     public_promos=[]
     for p in active:
         product=next((a for a in shown if a['id']==p['product_id']),None)
-        if product:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':product['image']})
+        if product and product['available']:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':product['image']})
     return shown,public_promos
 
 def fils(value):
@@ -628,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK,con() as d:
                 d.execute('BEGIN IMMEDIATE');shift=active_shift(d)
                 if not shift:return self.sendj(409,{'error':'المقهى مغلق حالياً، لم يبدأ الموظف يوم العمل'})
-                allowed={p['id']:p for p in catalog(d)[0]}
+                allowed={p['id']:p for p in catalog(d)[0] if p['available']}
                 lines=[];total=0
                 for x in order_items:
                     if not isinstance(x,dict) or not isinstance(x.get('id'),str) or type(x.get('qty'))!=int or not 1<=x['qty']<=30:
