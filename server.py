@@ -124,6 +124,13 @@ def init():
         add_column(d,'order_items','original_fils','INTEGER')
         add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
+        # Apply this requested price change once per database. Later owner edits remain intact.
+        d.execute("CREATE TABLE IF NOT EXISTS site_migrations (key TEXT PRIMARY KEY)")
+        if not d.execute("SELECT 1 FROM site_migrations WHERE key='menu_prices_2026_11_07'").fetchone():
+            d.executemany('UPDATE products SET price_fils=?,discount_percent=0 WHERE id=?',
+                [(round(price*100),pid) for pid,name,cat,price,image in SEED])
+            d.execute("INSERT INTO site_migrations(key) VALUES('menu_prices_2026_11_07')")
+
         # Apply the requested price list once to previously initialized databases.
         # Future owner edits are preserved across subsequent restarts.
         if d.execute('PRAGMA user_version').fetchone()[0] < 8:
