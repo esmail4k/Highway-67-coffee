@@ -117,6 +117,24 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 .cart-syrup{direction:inherit}
 @media(max-width:600px){.cart-confirm{padding:10px 8px;gap:7px}.cart-confirm #cartConfirmOpen{padding:9px 8px;font-size:11px}.cart-confirm strong{font-size:12px}.cart-confirm small{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.product{animation:none!important}.product .photo img{transition:none!important}.cart-confirm{animation:none!important}#count.badge-pop{animation:none!important}}
+
+/* Sold-out labels and per-item notes; the existing menu and animations remain intact. */
+.product.sold-out{background:#f7f5f1;opacity:.72;box-shadow:none}
+.product.sold-out .photo img{filter:grayscale(.65)}
+.product.sold-out .add{background:#b3afa9;color:#423c35;cursor:not-allowed;box-shadow:none;transform:none}
+.product.sold-out .add:disabled{opacity:1}
+.sold-out-tag{position:absolute;z-index:3;top:9px;right:9px;font-size:10px;font-weight:900;background:#5e5347;color:#fff;padding:5px 8px;border-radius:10px}
+.cart-line{width:100%;border-bottom:1px solid #ede5da;padding:0 0 12px;margin:0 0 12px}
+.cart-line .rowcart{border-bottom:0}
+.cart-item-note{display:flex;flex-direction:column;gap:6px;padding:0 3px}
+.cart-item-note label,.checkout-item-note label{font-size:11px;color:#776651;font-weight:800}
+.cart-item-note input,.checkout-item-note input{border:1px solid #decdb6;border-radius:10px;padding:10px 11px;background:#fff;width:100%;direction:inherit;text-align:start;font:12px Tahoma,Arial,sans-serif}
+.checkout-line-title{font-weight:900;margin-top:19px;font-size:13px;color:#493826}
+.checkout-line-help{font-size:11px;line-height:1.6;color:#85715d}
+.checkout-line-notes{display:grid;gap:9px;margin:9px 0 12px}
+.checkout-item-note{border:1px solid #eadbc7;border-radius:12px;padding:10px;background:#fffaf4}
+.checkout-item-note b{display:block;font-size:12px;margin-bottom:7px}
+.cart-unavailable{border:1px solid #cda89b;background:#fff4ee;color:#983c2b;border-radius:10px;padding:8px;margin:5px 0 10px;font-size:11px}
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -140,24 +158,16 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <p id="customItem"></p><p class="custom-sub">اختر نكهة السيرب — الخيارات غير المتاحة تظهر لك بوضوح.</p>
   <fieldset class="syrup-options"><legend>إضافات السيرب</legend>
     <label class="syrup-option"><input type="radio" name="syrup" value="" checked><span>بدون سيرب إضافي</span><small>متوفر</small></label>
-    <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل 🍮</span><small>متوفر</small></label>
-    <div id="caramelQuantity" class="caramel-quantity" hidden>
-      <div class="caramel-description"><strong>كم جرعة كراميل تبا؟</strong><small>تقدر تختار من 1 إلى 5 جرعات</small></div>
-      <div class="caramel-stepper" aria-label="عدد جرعات الكراميل">
-        <button type="button" id="lessCaramel" aria-label="تقليل الكراميل">−</button>
-        <output id="caramelShots" aria-live="polite">1</output>
-        <button type="button" id="moreCaramel" aria-label="زيادة الكراميل">+</button>
-      </div>
-    </div>
+    <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل 🍮 — جرعة واحدة</span><small>+1 AED</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="vanilla" disabled><span>فانيلا</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="hazelnut" disabled><span>بندق (هازلنت)</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="chocolate" disabled><span>شوكولاتة</span><small>غير متوفر</small></label>
-  </fieldset><p class="custom-price">السيرب المتاح بدون رسوم إضافية حالياً</p>
+  </fieldset><p class="custom-price">الكراميل: جرعة واحدة، برسوم إضافية 1 درهم لكل مشروب.</p>
   <button type="button" id="confirmCustom" class="custom-confirm">أضف للسلة <span>＋</span></button>
 </section>
 <div class="overlay" id="overlay"></div><aside class="drawer" id="drawer"><div class="drawer-head"><h2 id="drawerTitle">سلة الطلبات</h2><button class="close" id="closeCart" aria-label="إغلاق">×</button></div>
 <div id="cartStep"><div id="cartItems"></div><button type="button" id="clearCart" class="clearCart" hidden>تفريغ السلة</button><div class="sum"><span>المجموع</span><span id="total">0 AED</span></div><button class="checkout" id="checkout">إتمام الطلب</button><p class="msg">الدفع عند الاستلام. لا يُخصم أي مبلغ من بطاقتك عبر الموقع.</p></div>
-<form id="checkoutForm" class="checkoutForm" hidden><label for="customerName">اسم الزبون</label><input id="customerName" name="customerName" autocomplete="name" required maxlength="65" placeholder="اسمك"><label for="customerPhone">رقم الهاتف</label><input id="customerPhone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="05xxxxxxxx"><label for="customerCar">رقم السيارة</label><input id="customerCar" name="customerCar" required maxlength="32" placeholder="رقم اللوحة / رمز اللوحة"><label for="customerNotes">ملاحظات على الطلب (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: بدون سكر، ثلج أقل..."></textarea><div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div><p class="subnote" id="checkoutError">بعد التأكيد، توصّل الطلبية مباشرة إلى شاشة الموظفين.</p><button id="submitOrder" type="submit">تأكيد وإرسال الطلب</button><button type="button" id="goCart" class="back">الرجوع إلى السلة</button></form>
+<form id="checkoutForm" class="checkoutForm" hidden><label for="customerName">اسم الزبون</label><input id="customerName" name="customerName" autocomplete="name" required maxlength="65" placeholder="اسمك"><label for="customerPhone">رقم الهاتف</label><input id="customerPhone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="05xxxxxxxx"><label for="customerCar">رقم السيارة</label><input id="customerCar" name="customerCar" required maxlength="32" placeholder="رقم اللوحة / رمز اللوحة"><div class="checkout-line-title">ملاحظات لكل منتج (اختياري)</div><p class="checkout-line-help">لو تبا مشروب بدون سكر أو عندك طلب خاص، اكتب الملاحظة تحت المنتج.</p><div id="checkoutItemNotes" class="checkout-line-notes"></div><label for="customerNotes">ملاحظات عامة على الطلب (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: بدون سكر، ثلج أقل..."></textarea><div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div><p class="subnote" id="checkoutError">بعد التأكيد، توصّل الطلبية مباشرة إلى شاشة الموظفين.</p><button id="submitOrder" type="submit">تأكيد وإرسال الطلب</button><button type="button" id="goCart" class="back">الرجوع إلى السلة</button></form>
 <div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3><p id="receiptText"></p><section class="feedback-card" id="feedbackCard" aria-labelledby="feedbackTitle">
   <div class="feedback-kicker">رأيك يصنع فرقاً ✨</div><h4 id="feedbackTitle">كيف كانت تجربتك؟</h4>
   <p class="feedback-hint">التقييم اختياري تماماً؛ تقدر ترجع له بعد ما تجرّب طلبك.</p>
@@ -181,4 +191,4 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم 💛</button><button type="button" id="skipFeedback">يمكن مرة ثانية</button></div>
 </section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
-<script src="/i18n.js?v=4" defer></script><script src="/app.js?v=4" defer></script></body></html>
+<script src="/i18n.js?v=5" defer></script><script src="/app.js?v=5" defer></script></body></html>
