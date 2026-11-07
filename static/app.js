@@ -151,7 +151,8 @@ $('sendFeedback').onclick=async()=>{
   });
   const data=await res.json();
   if(!res.ok)throw Error(data.error||'تعذر حفظ التقييم');
-  $('feedbackCard').innerHTML='<div class="feedback-thanks">💛 شكراً من القلب! تقييمك وصلنا، وبيساعدنا نطور الكوفي.</div>';
+  $('feedbackCard').hidden=true;
+  notice('💛 شكراً من القلب! تقييمك وصلنا');
   feedbackToken=null;
  }catch(err){$('feedbackError').textContent=err.message;$('sendFeedback').disabled=false}
 };
