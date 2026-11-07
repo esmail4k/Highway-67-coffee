@@ -367,7 +367,7 @@ class Handler(BaseHTTPRequestHandler):
                     xls(o['customer_name']),xls(o['phone']),xls(o['car_plate']),
                     xls(o['items']),xls(o['notes']),xls(o['status']),
                     f"{o['total_fils']/100:.2f}"])
-            buf=('\\ufeff'+out.getvalue()).encode('utf-8')
+            buf=out.getvalue().encode('utf-8-sig')
             self.send_response(200)
             self.send_header('Content-Type','text/csv; charset=utf-8')
             self.send_header('Content-Disposition','attachment; filename="highway67-orders.csv"')
