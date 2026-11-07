@@ -140,6 +140,22 @@ def init():
             salt,digest=hash_staff_password(STAFF_PASS)
             d.execute('INSERT INTO staff_accounts(username,salt,digest,created_at) VALUES(?,?,?,?)',
                 (STAFF_USER,salt,digest,utcnow()))
+        # Operator-initiated one-time staff credential rotation, without GitHub secrets.
+        # The identifier is a non-secret nonce. Repeated redeploys never reset it again.
+        rotation=os.environ.get('STAFF_CREDENTIAL_ROTATION','').strip()
+        if rotation and STAFF_PASS and re.fullmatch(r'[a-zA-Z0-9_-]{4,48}',rotation):
+            marker='staff_credentials_'+rotation
+            if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(marker,)).fetchone():
+                staff=d.execute('SELECT id FROM staff_accounts WHERE username=?',(STAFF_USER,)).fetchone()
+                salt,digest=hash_staff_password(STAFF_PASS)
+                if staff:
+                    d.execute('UPDATE staff_accounts SET salt=?,digest=?,enabled=1,session_version=session_version+1 WHERE id=?',
+                              (salt,digest,staff['id']))
+                else:
+                    d.execute('INSERT INTO staff_accounts(username,salt,digest,created_at) VALUES(?,?,?,?)',
+                              (STAFF_USER,salt,digest,utcnow()))
+                d.execute('DELETE FROM login_challenges WHERE role=? AND username=?',('staff',STAFF_USER))
+                d.execute('INSERT INTO site_migrations(key) VALUES(?)',(marker,))
         # Open the very first shift when orders go live; existing shifts remain under staff control.
         if REAL_ORDERS and os.environ.get('AUTO_START_FIRST_SHIFT','1')=='1' and not d.execute('SELECT 1 FROM shifts LIMIT 1').fetchone():
             d.execute('INSERT INTO shifts(local_date,started_at,label) VALUES(?,?,?)',
