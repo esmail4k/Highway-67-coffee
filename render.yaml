@@ -20,6 +20,8 @@ services:
         value: "0"
       - key: PUBLIC_MENU_ONLY
         value: "1"
+      - key: STAFF_PANEL_ENABLED
+        value: "1"
       - key: REQUIRE_OWNER_SMS_2FA
         value: "1"
       - key: REQUIRE_STAFF_SMS_2FA
