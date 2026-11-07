@@ -25,7 +25,7 @@ PORT=int(os.environ.get('PORT','8080'))
 HOST=os.environ.get('HOST','127.0.0.1')
 REAL_ORDERS=os.environ.get('ENABLE_REAL_ORDERS','0')=='1'
 MENU_ONLY=os.environ.get('PUBLIC_MENU_ONLY','0')=='1'
-STAFF_PANEL_ENABLED=os.environ.get('STAFF_PANEL_ENABLED','0')=='1'
+STAFF_PANEL_ENABLED=os.environ.get('STAFF_PANEL_ENABLED','1')=='1'
 STAFF_USER=os.environ.get('STAFF_USERNAME','admin123')
 STAFF_PASS=os.environ.get('STAFF_PASSWORD','')
 OWNER_USER=os.environ.get('OWNER_USERNAME','esmail')
@@ -318,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if path=='/api/version':
-            return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY})
+            return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY,'staff_panel_enabled':STAFF_PANEL_ENABLED})
         if MENU_ONLY and (path in ('/owner','/owner/','/owner.html') or (path in ('/staff','/staff/','/staff.html') and not STAFF_PANEL_ENABLED) or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')))):
             return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
