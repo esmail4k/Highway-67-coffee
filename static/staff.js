@@ -1,6 +1,6 @@
 'use strict';
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
-let feedbackLoaded=false;
+let feedbackLoaded=false,stockItems=[],stockLoading=false;
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('exportOrders').classList.toggle('hidden',yes)}
 $('exportOrders').onclick=()=>{window.location.href='/api/staff/export.csv'};
 let currentChallenge=null;
@@ -30,16 +30,29 @@ async function refresh(){if(updating||!$('loginScreen').classList.contains('hidd
 function render(){if(!data)return;const s=data.shift;
  $('shiftStatus').textContent=s?'الوردية #'+s.id+' مفتوحة':'اليوم مغلق — ابدأ يوماً جديداً';$('shiftStatus').classList.toggle('on',!!s);
  $('startBtn').classList.toggle('hidden',!!s);$('endBtn').classList.toggle('hidden',!s);
- $('stats').innerHTML=summaryCards(data);const visible=data.orders.filter(o=>selectedState==='all'||o.status===selectedState).sort((a,b)=>({new:0,ready:1,delivered:2}[a.status]-{new:0,ready:1,delivered:2}[b.status])||b.id-a.id);
+ $('stats').innerHTML=summaryCards(data);const visible=data.orders.filter(o=>selectedState==='all'||o.status===selectedState).sort((a,b)=>({new:0,ready:1,delivered:2,cancelled:3}[a.status]-{new:0,ready:1,delivered:2,cancelled:3}[b.status])||b.id-a.id);
  $('orders').innerHTML=visible.length?visible.map(o=>bill(o,true)).join(''):'<div class="empty">لا توجد طلبات في هذه الوردية بعد.</div>';
  document.querySelectorAll('[data-order]').forEach(b=>b.onclick=()=>advance(Number(b.dataset.order),b.dataset.status));
+ document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>cancelOrder(Number(b.dataset.cancel),b));
  $('top').innerHTML=topProducts(data);$('detail').innerHTML=`<div class="kpirow"><span>رقم الوردية</span><b>${s?'#'+s.id:'—'}</b></div><div class="kpirow"><span>طلبات جاهزة</span><b>${data.counts.ready}</b></div><div class="kpirow"><span>طلبات مُسلّمة</span><b>${data.counts.delivered}</b></div><div class="kpirow"><span>صافي مبيعات الوردية</span><b>${fmt(data.sales_fils)}</b></div>`;
  $('archive').innerHTML=(data.shifts||[]).filter(x=>x.ended_at).length?data.shifts.filter(x=>x.ended_at).map(s=>`<article class="shift"><div><strong>${shiftName(s)}</strong><p>انتهى: ${when(s.ended_at)} | ${s.order_count} طلب | ${fmt(s.sales_fils)}</p></div><div class="actions"><button class="button outline sm" data-viewshift="${s.id}">عرض وتعديل</button><button class="button light sm" data-hideshift="${s.id}">إخفاء</button></div></article>`).join(''):'<div class="empty">لا توجد أيام سابقة ظاهرة لك.</div>';
  document.querySelectorAll('[data-viewshift]').forEach(b=>b.onclick=()=>openShift(Number(b.dataset.viewshift)));
  document.querySelectorAll('[data-hideshift]').forEach(b=>b.onclick=()=>hideShift(Number(b.dataset.hideshift),b));
 }
 async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
-function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden')}
+async function cancelOrder(id,button){
+ const english=window.highway67Language?.get()==='en';
+ const message=english
+  ?'Cancel order #'+id+'? The order will remain in history and will not count toward delivered sales.'
+  :'تأكيد إلغاء الطلب رقم '+id+'؟ الطلب يظل محفوظ في السجل ولن يُحسب ضمن المبيعات المسلّمة.';
+ if(!window.confirm(message))return;
+ button.disabled=true;
+ try{
+  await api('/api/staff/orders/'+id+'/cancel','POST',{reason:'غير متوفر'});
+  data=null;await refresh();
+ }catch(err){window.alert(err.message)}finally{button.disabled=false}
+}
+function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
 $('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  const forced=b.dataset.force==='yes';await api('/api/staff/shift/end','POST',{force_cancel_pending:forced});
@@ -48,7 +61,7 @@ $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  if(e.pending_count){b.dataset.force='yes';b.textContent='تأكيد الإنهاء وإلغاء '+e.pending_count+' طلب';b.classList.add('red');$('refreshLabel').textContent=e.message;}
  else{alert(e.message)}
  }finally{b.disabled=false}};
-document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');if(selectedPage==='reviews')loadFeedback();render()});
+document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');$('stockPage').classList.toggle('hidden',selectedPage!=='stock');if(selectedPage==='reviews')loadFeedback();if(selectedPage==='stock')loadStock();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
 async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){alert(e.message)}}
@@ -83,3 +96,38 @@ async function loadFeedback(){
   feedbackLoaded=true;
  }catch(e){list.innerHTML='<div class="empty">'+safe(e.message)+'</div>';}
 }
+
+
+function renderStock(){
+ const list=$('stockProducts');
+ const categoryNames={'Hot Drinks':'Hot drinks','Cold Drinks':'Cold drinks','Croissants':'Croissants','Desserts':'Desserts','Other':'Other'};
+ const localized=window.highway67Language?.get()==='en';
+ list.innerHTML=stockItems.length?stockItems.map(p=>{
+  const available=!!p.available;
+  const title=localized&&window.highway67Language?.productName?window.highway67Language.productName(p.name):p.name;
+  return `<div class="stock-product ${available?'':'stock-unavailable'}"><div class="stock-product-name"><strong>${safe(title)}</strong><small>${categoryNames[p.category]||safe(p.category)}</small></div><span class="stock-state ${available?'stock-on':'stock-off'}">${available?'متوفر':'غير متوفر'}</span><button type="button" class="button sm ${available?'outline':'green'}" data-stock="${safe(p.id)}" data-available="${available?'false':'true'}">${available?'تعيين غير متوفر':'إعادة التوفر'}</button></div>`;
+ }).join(''):'<div class="empty">لا توجد منتجات حالياً.</div>';
+ list.querySelectorAll('[data-stock]').forEach(btn=>btn.onclick=async()=>{
+  const pid=btn.dataset.stock,available=btn.dataset.available==='true';
+  btn.disabled=true;$('stockStatus').textContent='';
+  try{
+   await api('/api/staff/products/'+encodeURIComponent(pid)+'/availability','POST',{available});
+   const p=stockItems.find(x=>x.id===pid);
+   if(p)p.available=available?1:0;
+   renderStock();
+   $('stockStatus').textContent=available?'تم إرجاع المنتج للمنيو':'تم وضع علامة غير متوفر للزبائن';
+  }catch(e){$('stockStatus').textContent=e.message;btn.disabled=false}
+ });
+}
+async function loadStock(){
+ if(stockLoading)return;
+ stockLoading=true;
+ try{
+  const result=await api('/api/staff/products');
+  stockItems=result.products||[];
+  renderStock();
+ }catch(e){$('stockStatus').textContent=e.message}
+ finally{stockLoading=false}
+}
+$('refreshStock').onclick=loadStock;
+setInterval(()=>{if(selectedPage==='stock'&&$('loginScreen').classList.contains('hidden'))loadStock()},30000);
