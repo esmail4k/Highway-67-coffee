@@ -42,7 +42,7 @@
     ['انتهى العرض','Offer ended'],['عرض خاص لمدة محدودة','Limited-time offer'],
     ['شاهد المنتج','View item'],['الوقت المتبقي','Time remaining'],
     ['كرواسون جبن','Cheese croissant'],['كرواسون نوتيلا','Nutella croissant'],['كرواسون شيبس','Chips croissant'],
-    ['بيكولو','Piccolo'],['كورتادو','Cortado'],['فلات وايت','Flat white'],['لاتيه','Latte'],
+    ['إسبريسو','Espresso'],['بيكولو','Piccolo'],['كورتادو','Cortado'],['فلات وايت','Flat white'],['لاتيه','Latte'],
     ['كابتشينو','Cappuccino'],['أمريكانو','Americano'],['إسبانيش لاتيه','Spanish latte'],
     ['موهيتو','Mojito'],['كولورادو','Colorado'],['لاتيه مثلج','Iced latte'],
     ['سبانيش مثلج','Iced Spanish latte'],['كولد برو','Cold brew'],
