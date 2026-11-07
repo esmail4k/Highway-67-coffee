@@ -25,6 +25,7 @@ PORT=int(os.environ.get('PORT','8080'))
 HOST=os.environ.get('HOST','127.0.0.1')
 REAL_ORDERS=os.environ.get('ENABLE_REAL_ORDERS','0')=='1'
 MENU_ONLY=os.environ.get('PUBLIC_MENU_ONLY','0')=='1'
+STAFF_PANEL_ENABLED=os.environ.get('STAFF_PANEL_ENABLED','0')=='1'
 STAFF_USER=os.environ.get('STAFF_USERNAME','admin123')
 STAFF_PASS=os.environ.get('STAFF_PASSWORD','')
 OWNER_USER=os.environ.get('OWNER_USERNAME','esmail')
@@ -318,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path=='/api/version':
             return self.sendj(200,{'site':'highway67','design':'v7','orders_enabled':REAL_ORDERS,'menu_only':MENU_ONLY})
-        if MENU_ONLY and (path in ('/owner','/owner/','/owner.html') or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version','/api/staff/session'))):
+        if MENU_ONLY and (path in ('/owner','/owner/','/owner.html') or (path in ('/staff','/staff/','/staff.html') and not STAFF_PANEL_ENABLED) or (path.startswith('/api/') and path not in ('/api/products','/api/shift','/api/version') and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')))):
             return self.sendj(404,{'error':'غير متاح'})
         if path=='/healthz':return self.sendj(200,{'ok':True,'time':utcnow()})
         if path=='/api/products':
@@ -384,7 +385,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(buf)));self.common();self.end_headers();self.wfile.write(buf)
     def do_POST(self):
         path=urlsplit(self.path).path
-        if MENU_ONLY:return self.sendj(503,{'error':'استقبال الطلبات والإدارة متوقفان حالياً'})
+        if MENU_ONLY and not (STAFF_PANEL_ENABLED and path.startswith('/api/staff/')):
+            return self.sendj(503,{'error':'استقبال طلبات الزبائن متوقف حالياً'})
         if not self.same_origin():return self.sendj(403,{'error':'مصدر الطلب غير مسموح'})
         data=self.readj()
         if data is None:return self.sendj(400,{'error':'البيانات غير صحيحة'})
