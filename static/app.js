@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let products=[],promotions=[],selection='all',search='',cart={},shopOpen=false,banner=0;
-let customizeId=null,customizeSource=null,caramelShots=1,confirmTimer=null,feedbackToken=null,feedbackOrderId=null,feedbackLiked=null,feedbackStars=null,feedbackReasons=new Set();
+let products=[],promotions=[],selection='all',search='',cart={},cartNotes={},shopOpen=false,banner=0;
+let customizeId=null,customizeSource=null,confirmTimer=null,feedbackToken=null,feedbackOrderId=null,feedbackLiked=null,feedbackStars=null,feedbackReasons=new Set();
 const groups=[['Hot Drinks','المشروبات الساخنة','i-cup'],['Cold Drinks','المشروبات الباردة','i-cold'],['Croissants','الكرواسون','i-crois'],['Desserts','الحلويات','i-crois'],['Other','أخرى','i-all']];
 function money(fils){return (Number(fils||0)/100).toFixed(2).replace(/\.00$/,'')+' AED'}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
@@ -13,14 +13,15 @@ function qty(){return Object.values(cart).reduce((a,n)=>a+n,0)}
 function productForKey(key){return products.find(p=>p.id===key.split('__')[0])}
 function shotsForKey(key){const match=/__caramel([1-5])$/.exec(key);return match?Number(match[1]):(key.endsWith('__caramel')?1:0)}
 function syrupForKey(key){return shotsForKey(key)>0?'caramel':''}
-function sum(){return Object.entries(cart).reduce((total,[key,n])=>{const p=productForKey(key);return total+(p?finalPrice(p)*n:0)},0)}
+function unitPrice(key){const p=productForKey(key);return p?finalPrice(p)+(syrupForKey(key)?100:0):0}
+function sum(){return Object.entries(cart).reduce((total,[key,n])=>total+unitPrice(key)*n,0)}
 function renderCards(){
  const sections=groups.filter(([id])=>selection==='all'||selection===id).map(([id,label,icon])=>{
- const matches=products.filter(p=>p.category===id&&p.available&&normalized(p.name+' '+p.id+' '+id+' '+(window.highway67Language ? window.highway67Language.productName(p.name) : '')).includes(search));
+ const matches=products.filter(p=>p.category===id&&normalized(p.name+' '+p.id+' '+id+' '+(window.highway67Language ? window.highway67Language.productName(p.name) : '')).includes(search));
  if(!matches.length)return '';
  const cards=matches.map((p,index)=>{
  const disc=Number(p.effective_discount||0),sale=disc>0;
- return `<article class="product ${id==='Croissants'?'pastry':''}" style="--item-delay:${Math.min(index*45,450)}ms">${sale?`<span class="discountTag">خصم ${disc}%</span>`:''}<div class="photo"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.name)}"></div><div class="details"><div class="pname">${esc(p.name)}</div><div class="pricegroup">${sale?`<del class="oldprice">${money(p.price_fils)}</del>`:''}<span class="price ${sale?'saleprice':''}">${money(finalPrice(p))}</span></div><button type="button" class="add" data-add="${esc(p.id)}">+ إضافة</button></div></article>`}).join('');
+ return `<article class="product ${id==='Croissants'?'pastry':''} ${p.available?'':'sold-out'}" style="--item-delay:${Math.min(index*45,450)}ms">${sale?`<span class="discountTag">خصم ${disc}%</span>`:''}${!p.available?'<span class="sold-out-tag">غير متوفر</span>':''}<div class="photo"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.name)}"></div><div class="details"><div class="pname">${esc(p.name)}</div><div class="pricegroup">${sale?`<del class="oldprice">${money(p.price_fils)}</del>`:''}<span class="price ${sale?'saleprice':''}">${money(finalPrice(p))}</span></div><button type="button" class="add" data-add="${esc(p.id)}" ${p.available?'':'disabled aria-disabled="true"'}>${p.available?'+ إضافة':'غير متوفر'}</button></div></article>`}).join('');
  return `<section class="category" id="cat-${id.replace(/ /g,'-')}"><h2><svg><use href="#${icon}"/></svg>${label}</h2><div class="products ${id==='Croissants'?'pastries':''}">${cards}</div></section>`}).join('');
  $('sections').innerHTML=sections||'<p class="blank">ما حصلنا منتجات بهالبحث</p>';
  document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add,b));
@@ -105,46 +106,34 @@ function closeCustomizer(){
  $('customModal').hidden=true;$('customOverlay').hidden=true;
  document.body.style.overflow='';customizeId=null;customizeSource=null;
 }
-function updateCaramelStep(){
- $('caramelShots').textContent=caramelShots;
- $('lessCaramel').disabled=caramelShots<=1;
- $('moreCaramel').disabled=caramelShots>=5;
-}
-function syncCaramelChoice(){
- const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
- $('caramelQuantity').hidden=syrup!=='caramel';
-}
 function openCustomizer(id,source){
- customizeId=id;customizeSource=source;caramelShots=1;
+ customizeId=id;customizeSource=source;
  const p=products.find(x=>x.id===id);if(!p)return;
  $('customItem').textContent=p.name+' · '+money(finalPrice(p));
  document.querySelector('input[name="syrup"][value=""]').checked=true;
- updateCaramelStep();syncCaramelChoice();
  $('customOverlay').hidden=false;$('customModal').hidden=false;
  document.body.style.overflow='hidden';
  $('confirmCustom').focus();
 }
 function addToCart(id,shots,source){
- const p=products.find(x=>x.id===id);if(!p)return;
- const key=id+(shots?'__caramel'+shots:'');
+ const p=products.find(x=>x.id===id);if(!p||!p.available)return;
+ const key=id+(shots?'__caramel1':'');
  cart[key]=Math.min(30,(cart[key]||0)+1);
  renderCart();flyToCart(p,source);showCartConfirm(p,shots,source);
 }
 function add(id,source){
+ if(!products.find(p=>p.id===id&&p.available))return notice('هذا المنتج غير متوفر حالياً');
  if(['spanish','icedspanish','latte','icedlatte'].includes(id))return openCustomizer(id,source);
  addToCart(id,0,source);
 }
 $('closeCustom').onclick=closeCustomizer;
 $('customOverlay').onclick=closeCustomizer;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('customModal').hidden)closeCustomizer()});
-document.querySelectorAll('input[name="syrup"]').forEach(x=>x.addEventListener('change',syncCaramelChoice));
-$('lessCaramel').onclick=()=>{caramelShots=Math.max(1,caramelShots-1);updateCaramelStep()};
-$('moreCaramel').onclick=()=>{caramelShots=Math.min(5,caramelShots+1);updateCaramelStep()};
 $('confirmCustom').onclick=()=>{
  if(!customizeId)return;
  const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
  if(syrup&&syrup!=='caramel')return;
- const id=customizeId,source=customizeSource,shots=syrup==='caramel'?caramelShots:0;
+ const id=customizeId,source=customizeSource,shots=syrup==='caramel'?1:0;
  closeCustomizer();addToCart(id,shots,source);
 };
 function renderCart(){
