@@ -164,7 +164,8 @@
       : (language === 'en' ? 'Highway 67 Coffee | Order' : 'Highway 67 Coffee | الطلب');
     var toggle = document.getElementById('langToggle');
     if (toggle) {
-      toggle.textContent = language === 'en' ? 'العربية' : 'English';
+      var switchLabel = language === 'en' ? 'العربية' : 'English';
+      if (toggle.textContent !== switchLabel) toggle.textContent = switchLabel;
       toggle.setAttribute('aria-label',language === 'en' ? 'Switch to Arabic' : 'Switch to English');
       toggle.setAttribute('title',language === 'en' ? 'Switch to Arabic' : 'Switch to English');
     }
