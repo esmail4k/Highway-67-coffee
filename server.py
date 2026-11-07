@@ -43,7 +43,7 @@ LOCK=threading.RLock()
 ATTEMPTS=defaultdict(deque)
 PBKDF2_ITERATIONS=320000
 # Confirmed Highway 67 menu prices (AED), November 2026.
-SEED=[('piccolo','بيكولو','Hot Drinks',15.99,'hot.webp'),('cortado','كورتادو','Hot Drinks',15.99,'hot.webp'),('flat','فلات وايت','Hot Drinks',15.99,'hot.webp'),('latte','لاتيه','Hot Drinks',15.99,'hot.webp'),('cap','كابتشينو','Hot Drinks',15.99,'hot.webp'),('americano','أمريكانو','Hot Drinks',15.99,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',16.99,'hot.webp'),('mojito','موهيتو','Cold Drinks',15.99,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',15.99,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',15.99,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',16.99,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',15.99,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',15.99,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',15.99,'iced.webp'),('cheese','كرواسون جبن','Croissants',12,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',13,'nutella.webp'),('chips','كرواسون شيبس','Croissants',13,'chips.webp')]
+SEED=[('espresso','إسبريسو','Hot Drinks',12.00,'hot.webp'),('piccolo','بيكولو','Hot Drinks',15.99,'hot.webp'),('cortado','كورتادو','Hot Drinks',12.50,'hot.webp'),('flat','فلات وايت','Hot Drinks',13.50,'hot.webp'),('latte','لاتيه','Hot Drinks',15.99,'hot.webp'),('cap','كابتشينو','Hot Drinks',13.50,'hot.webp'),('americano','أمريكانو','Hot Drinks',12.99,'hot.webp'),('spanish','إسبانيش لاتيه','Hot Drinks',16.99,'hot.webp'),('mojito','موهيتو','Cold Drinks',15.99,'cold-1.webp'),('colorado','كولورادو','Cold Drinks',15.99,'cold-2.webp'),('icedlatte','لاتيه مثلج','Cold Drinks',15.99,'iced.webp'),('icedspanish','سبانيش مثلج','Cold Drinks',16.99,'iced.webp'),('coldbrew','كولد برو','Cold Drinks',15.99,'iced.webp'),('icedamericano','أمريكانو مثلج','Cold Drinks',15.99,'iced.webp'),('vanilla','لاتيه مثلج بالفانيلا','Cold Drinks',15.99,'iced.webp'),('cheese','كرواسون جبن','Croissants',12,'cheese.webp'),('nutella','كرواسون نوتيلا','Croissants',13,'nutella.webp'),('chips','كرواسون شيبس','Croissants',13,'chips.webp')]
 CATEGORIES={'Hot Drinks','Cold Drinks','Croissants','Desserts','Other'}
 
 def utcnow():return datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -135,6 +135,17 @@ def init():
             d.executemany('UPDATE products SET price_fils=? WHERE id=?',
                 [(round(price*100),pid) for pid,_,_,price,_ in SEED])
             d.execute('PRAGMA user_version=8')
+        # Updated walk-in shop prices for selected hot drinks. Idempotent DB update.
+        # Only the five requested products change; all other prices remain intact.
+        price_key='hot_drinks_shop_prices_2026_11_07_evening'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(price_key,)).fetchone():
+            d.execute('INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,1)',
+                      ('espresso','إسبريسو','Hot Drinks',1200,'hot.webp'))
+            d.executemany('UPDATE products SET price_fils=?,discount_percent=0 WHERE id=?',
+                          [(1200,'espresso'),(1250,'cortado'),(1350,'flat'),
+                           (1350,'cap'),(1299,'americano')])
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(price_key,))
+
         # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
         if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
             salt,digest=hash_staff_password(STAFF_PASS)
