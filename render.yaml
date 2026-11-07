@@ -1,11 +1,11 @@
-# Production plan for existing printed-QR service. Do not apply before secrets and paid disk approval.
-# Existing service: srv-dbllrv0m7kps73bub5gg
-# Keep https://highway67-coffee-photo-menu.onrender.com/ unchanged.
+# Reuse the existing Highway 67 service and the ORIGINAL printed QR URL.
+# FREE preview deployment: product pages can be shown but live order taking is disabled.
+# IMPORTANT: free Render filesystem is ephemeral; configure a durable DB/storage before accepting real orders.
 services:
   - type: web
     name: highway67-coffee-photo-menu
     runtime: python
-    plan: starter
+    plan: free
     region: frankfurt
     repo: https://github.com/esmail4k/Highway-67-coffee
     branch: main
@@ -13,17 +13,9 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python server.py
     healthCheckPath: /healthz
-    disk:
-      name: highway67-persistent-data
-      mountPath: /opt/data
-      sizeGB: 1
     envVars:
       - key: HOST
         value: 0.0.0.0
-      - key: DATA_DIR
-        value: /opt/data
-      - key: FORCE_HTTPS
-        value: "1"
       - key: ENABLE_REAL_ORDERS
         value: "0"
       - key: REQUIRE_OWNER_SMS_2FA
@@ -39,12 +31,4 @@ services:
       - key: OWNER_PASSWORD
         sync: false
       - key: STAFF_PASSWORD
-        sync: false
-      - key: OWNER_PHONE_E164
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_VERIFY_SERVICE_SID
         sync: false
