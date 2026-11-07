@@ -2,7 +2,7 @@
 """HIGHWAY 67 Coffee: customer ordering, staff shifts, owner controls.
 Requires a durable DATA_DIR and backups on production hosting.
 """
-import base64, hmac, hashlib, io, json, mimetypes, os, re, secrets, sqlite3, threading, time
+import base64, csv, hmac, hashlib, io, json, mimetypes, os, re, secrets, sqlite3, threading, time
 from collections import defaultdict, deque
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
@@ -343,6 +343,39 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/shift':
             with con() as d:shift=active_shift(d)
             return self.sendj(200,{'open':bool(shift),'orders_enabled':REAL_ORDERS})
+        if path=='/api/staff/export.csv':
+            if not self.auth('staff'):return
+            # Staff members can download orders and retain a backup before free DB expiry.
+            with con() as d:
+                orders=[dict(o) for o in d.execute(
+                    '''SELECT o.id,o.created_at,o.customer_name,o.phone,o.car_plate,
+                              o.notes,o.status,o.total_fils,s.local_date
+                         FROM orders o JOIN shifts s ON s.id=o.shift_id
+                         ORDER BY o.id DESC''')]
+                for o in orders:
+                    items=d.execute('SELECT name,qty FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
+                    o['items']=' | '.join(str(i['qty'])+' × '+i['name'] for i in items)
+            out=io.StringIO()
+            w=csv.writer(out)
+            w.writerow(['رقم الطلب','تاريخ الطلب','يوم العمل','اسم الزبون','الهاتف',
+                        'رقم السيارة','المنتجات','الملاحظات','الحالة','الإجمالي بالدرهم'])
+            def xls(value):
+                value=str(value if value is not None else '')
+                return "'"+value if value.lstrip().startswith(('=','+','-','@')) else value
+            for o in orders:
+                w.writerow([xls(o['id']),xls(o['created_at']),xls(o['local_date']),
+                    xls(o['customer_name']),xls(o['phone']),xls(o['car_plate']),
+                    xls(o['items']),xls(o['notes']),xls(o['status']),
+                    f"{o['total_fils']/100:.2f}"])
+            buf=('\\ufeff'+out.getvalue()).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type','text/csv; charset=utf-8')
+            self.send_header('Content-Disposition','attachment; filename="highway67-orders.csv"')
+            self.send_header('Content-Length',str(len(buf)))
+            self.common()
+            self.end_headers();self.wfile.write(buf)
+            return
+
         if path=='/api/staff/session':return self.sendj(200,{'authenticated':self.is_role('staff')})
         if path=='/api/owner/session':return self.sendj(200,{'authenticated':self.is_role('owner')})
         if path=='/api/staff/overview':
