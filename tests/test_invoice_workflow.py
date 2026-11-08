@@ -164,4 +164,75 @@ class InvoiceWorkflowTest(unittest.TestCase):
         code,activity=self.request(self.owner,'GET','/api/owner/activity')
         self.assertTrue(any(x['action']=='order_restored' for x in activity['logs']))
 
+
+    def test_owner_can_create_product_and_staff_add_to_invoice(self):
+        # The test database is temporary and never writes to the live cafe.
+        code,owner_login=self.request(self.owner,'POST','/api/owner/login',
+            {'username':'esmail','password':'test-owner-strong-password'})
+        self.assertEqual(code,200,owner_login)
+        code,staff_login=self.request(self.staff,'POST','/api/staff/login',
+            {'username':'test-staff','password':'test-staff-strong-password'})
+        self.assertEqual(code,200,staff_login)
+
+        code,created=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':None,'name':'مشروب اختبار جديد','category':'Cold Drinks',
+            'price':14.75,'discount_percent':20,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200,created)
+        pid=created['id']
+        self.assertTrue(pid.startswith('custom-'))
+
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        product=next(p for p in menu['products'] if p['id']==pid)
+        self.assertEqual(product['name'],'مشروب اختبار جديد')
+        self.assertEqual(product['price_fils'],1475)
+        self.assertEqual(product['final_price_fils'],1180)
+
+        code,order=self.request(self.customer,'POST','/api/orders',{
+            'customer_name':'Test Customer','phone':'0501234567',
+            'car_plate':'345 ABC','notes':'',
+            'items':[{'id':'cap','qty':1}]
+        })
+        self.assertEqual(code,201,order)
+        oid=order['id']
+        self.assertEqual(order['total_fils'],1350)
+
+        code,added=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':2})
+        self.assertEqual(code,200,added)
+        self.assertEqual(added['total_fils'],3710)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_item=next(p for p in current['items'] if p['product_id']==pid)
+        self.assertEqual(added_item['qty'],2)
+        self.assertEqual(added_item['price_fils'],1180)
+        self.assertEqual(added_item['original_fils'],1475)
+
+        code,again=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':1})
+        self.assertEqual(code,200,again)
+        self.assertEqual(again['total_fils'],4890)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_items=[p for p in current['items'] if p['product_id']==pid]
+        self.assertEqual(len(added_items),1)
+        self.assertEqual(added_items[0]['qty'],3)
+
+        # Changing a product does not modify a previously billed unit price.
+        code,_=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':pid,'name':'مشروب اختبار جديد','category':'Cold Drinks',
+            'price':16,'discount_percent':0,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200)
+        code,again=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':1})
+        self.assertEqual(code,200,again)
+        self.assertEqual(again['total_fils'],6490)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_items=sorted((p for p in current['items'] if p['product_id']==pid),key=lambda p:p['price_fils'])
+        self.assertEqual(len(added_items),2)
+        self.assertEqual([p['price_fils'] for p in added_items],[1180,1600])
+
 if __name__=='__main__':unittest.main()
