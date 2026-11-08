@@ -490,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
             with con() as d:
                 shift=active_shift(d)
                 result=shift_summary(d,shift)
-                result['shifts']=shift_cards(d,'staff')
+                result['shifts']=[]
             return self.sendj(200,result)
         if path=='/api/staff/products':
             if not self.auth('staff'):return
@@ -798,6 +798,7 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 if active_shift(d):return self.sendj(409,{'error':'يوجد يوم عمل مفتوح بالفعل'})
                 cursor=d.execute('INSERT INTO shifts(local_date,started_at,label) VALUES(?,?,?)',(localnow().date().isoformat(),utcnow(), 'يوم عمل جديد'))
+                record_log(d,actor_name(self,'staff'),'shift_started',None,'فتح يوم العمل #'+str(cursor.lastrowid))
                 d.commit()
             return self.sendj(200,{'ok':True,'shift_id':cursor.lastrowid})
         if path=='/api/staff/shift/end':
@@ -810,6 +811,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.sendj(409,{'error':f'يوجد {n} طلب لم يُسلّم بعد. لا يمكن إنهاء اليوم قبل تسليم جميع الطلبات.', 'pending_count':n})
                 finished=utcnow()
                 d.execute('UPDATE shifts SET ended_at=? WHERE id=?',(finished,shift['id']))
+                record_log(d,actor_name(self,'staff'),'shift_ended',None,'إغلاق يوم العمل #'+str(shift['id']))
                 d.commit()
             return self.sendj(200,{'ok':True,'ended_shift_id':shift['id'],'cancelled_orders':0})
         match=re.fullmatch(r'/api/(staff|owner)/products/([a-zA-Z0-9_-]+)/availability',path)
@@ -828,7 +830,7 @@ class Handler(BaseHTTPRequestHandler):
                 record_log(d,actor_name(self,role),'product_availability',None,f"{pid}: {'متوفر' if available else 'غير متوفر'}")
                 d.commit()
             return self.sendj(200,{'ok':True,'id':pid,'available':available})
-        match=re.fullmatch(r'/api/(staff|owner)/orders/(\\d+)/items/(\\d+)/(quantity|remove)',path)
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/items/(\\d+)/(quantity|remove)',path)
         if match:
             role,oid,item_id,action=match.group(1),int(match.group(2)),int(match.group(3)),match.group(4)
             if not self.auth(role):return
@@ -845,6 +847,8 @@ class Handler(BaseHTTPRequestHandler):
                 item=d.execute('SELECT * FROM order_items WHERE id=? AND order_id=?',(item_id,oid)).fetchone()
                 if not item:return self.sendj(404,{'error':'المنتج غير موجود في الفاتورة'})
                 old_qty=item['qty']
+                if action=='remove' and d.execute('SELECT COUNT(*) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]<=1:
+                    return self.sendj(409,{'error':'هذا آخر منتج؛ احذف الفاتورة بالكامل حتى تقدر تسترجعها لاحقاً'})
                 if action=='remove':
                     d.execute('DELETE FROM order_items WHERE id=?',(item_id,))
                     description=f"حذف {item['name']} (الكمية {old_qty}) من الفاتورة"
@@ -853,15 +857,12 @@ class Handler(BaseHTTPRequestHandler):
                     description=f"تعديل كمية {item['name']} من {old_qty} إلى {new_qty}"
                 total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
                 if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
-                if total==0:
-                    d.execute("UPDATE orders SET deleted_at=?,deleted_by=? WHERE id=?",(utcnow(),actor,oid))
-                    description+='؛ حذف الفاتورة تلقائياً لأنها أصبحت فارغة'
                 d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
                 record_log(d,actor,'item_removed' if action=='remove' else 'quantity_changed',oid,
                            description+f"؛ الإجمالي {order['total_fils']/100:.2f} ← {total/100:.2f} درهم")
                 d.commit()
             return self.sendj(200,{'ok':True,'total_fils':total})
-        match=re.fullmatch(r'/api/(staff|owner)/orders/(\\d+)/(delete|restore)',path)
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/(delete|restore)',path)
         if match:
             role,oid,action=match.group(1),int(match.group(2)),match.group(3)
             if not self.auth(role):return
