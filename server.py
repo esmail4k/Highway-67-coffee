@@ -305,7 +305,9 @@ def current_promo(p,now_local):
         if p['mode']=='last_hour':
             # Configure STORE_CLOSING_TIME in UAE local HH:MM (24-hour).
             closing=os.environ.get('STORE_CLOSING_TIME','').strip()
-            if not re.fullmatch(r'(?:[01]\\d|2[0-3]):[0-5]\\d',closing):return None
+            if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',closing):
+                # Show the requested promotion immediately while closing time is not configured.
+                return now_local.replace(hour=23,minute=59,second=59,microsecond=0)
             hour,minute=map(int,closing.split(':'))
             end=now_local.replace(hour=hour,minute=minute,second=0,microsecond=0)
             if hour==0 and minute==0:end+=timedelta(days=1)
