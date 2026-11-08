@@ -830,7 +830,7 @@ class Handler(BaseHTTPRequestHandler):
                 record_log(d,actor_name(self,role),'product_availability',None,f"{pid}: {'متوفر' if available else 'غير متوفر'}")
                 d.commit()
             return self.sendj(200,{'ok':True,'id':pid,'available':available})
-        match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/items/(\\d+)/(quantity|remove)',path)
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/items/(\d+)/(quantity|remove)',path)
         if match:
             role,oid,item_id,action=match.group(1),int(match.group(2)),int(match.group(3)),match.group(4)
             if not self.auth(role):return
