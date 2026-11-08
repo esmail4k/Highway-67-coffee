@@ -112,6 +112,13 @@ def init():
         CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,
           price_fils INTEGER NOT NULL CHECK(price_fils>=0),image TEXT NOT NULL,available INTEGER NOT NULL DEFAULT 1,
           discount_percent INTEGER NOT NULL DEFAULT 0,promo_only INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS product_addons (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          name TEXT NOT NULL, price_fils INTEGER NOT NULL CHECK(price_fils>=0),
+          max_qty INTEGER NOT NULL DEFAULT 1 CHECK(max_qty BETWEEN 1 AND 10),
+          enabled INTEGER NOT NULL DEFAULT 1);
+        CREATE INDEX IF NOT EXISTS addons_by_product ON product_addons(product_id,id);
         CREATE TABLE IF NOT EXISTS shifts (id INTEGER PRIMARY KEY AUTOINCREMENT,local_date TEXT NOT NULL,
           started_at TEXT NOT NULL,ended_at TEXT,label TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',
           hidden_for_staff INTEGER NOT NULL DEFAULT 0);
@@ -143,6 +150,7 @@ def init():
         add_column(d,'order_items','syrup','TEXT NOT NULL DEFAULT \'\'')
         add_column(d,'order_items','syrup_qty','INTEGER NOT NULL DEFAULT 0')
         add_column(d,'order_items','item_note',"TEXT NOT NULL DEFAULT ''")
+        add_column(d,'order_items','addon_details',"TEXT NOT NULL DEFAULT '[]'")
         add_column(d,'orders','cancel_reason',"TEXT NOT NULL DEFAULT ''")
         add_column(d,'orders','deleted_at','TEXT')
         add_column(d,'orders','deleted_by',"TEXT NOT NULL DEFAULT ''")
@@ -210,6 +218,12 @@ def init():
         d.execute("UPDATE promos SET title='خصم مميز - آخر ساعة' WHERE product_id='acai_smoothie' AND mode='last_hour'")
         # Update the acai product photo without overwriting owner-set pricing or availability.
         d.execute("UPDATE products SET image='acai-original-white.jpg' WHERE id='acai_smoothie'")
+        # Owner can freely edit or remove this default acai extra after its first creation.
+        if not d.execute("SELECT 1 FROM site_migrations WHERE key='acai_peanuts_addon_2026_11_08'").fetchone():
+            if not d.execute("SELECT 1 FROM product_addons WHERE product_id='acai_smoothie' AND name='إكسترا بينات'").fetchone():
+                d.execute('INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,1)',
+                          ('acai_smoothie','إكسترا بينات',200,1))
+            d.execute("INSERT INTO site_migrations(key) VALUES('acai_peanuts_addon_2026_11_08')")
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
@@ -251,7 +265,11 @@ def list_orders(d,shift_id,include_deleted=False):
         ids=[o['id'] for o in orders]
         holder=','.join('?'*len(ids))
         items=defaultdict(list)
-        for x in d.execute(f'SELECT * FROM order_items WHERE order_id IN ({holder})',ids):items[x['order_id']].append(dict(x))
+        for x in d.execute(f'SELECT * FROM order_items WHERE order_id IN ({holder})',ids):
+            item=dict(x)
+            try:item['addons']=json.loads(item.get('addon_details') or '[]')
+            except (ValueError,TypeError):item['addons']=[]
+            items[x['order_id']].append(item)
         for o in orders:o['items']=items[o['id']]
     return orders
 
@@ -331,11 +349,16 @@ def catalog(d):
             p['expires_at']=expiry.astimezone(timezone.utc).isoformat(timespec='seconds')
             active.append(p)
             linked[p['product_id']]=max(linked.get(p['product_id'],0),p['discount_percent'])
+    addons=defaultdict(list)
+    for a in d.execute('SELECT id,product_id,name,price_fils,max_qty FROM product_addons WHERE enabled=1 ORDER BY id'):
+        a=dict(a)
+        addons[a['product_id']].append(a)
     shown=[]
     active_ids={p['product_id'] for p in active}
     for p in products:
         if p['promo_only'] and p['id'] not in active_ids:continue
         if p['id']=='piccolo':continue
+        p['addons']=addons.get(p['id'],[])
         p['effective_discount']=max(p['discount_percent'],linked.get(p['id'],0))
         p['final_price_fils']=(p['price_fils']*(100-p['effective_discount'])+50)//100
         shown.append(p)
@@ -345,6 +368,26 @@ def catalog(d):
         product=next((a for a in shown if a['id']==p['product_id']),None)
         if product and product['available']:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':('acai-promo.jpg' if p['product_id']=='acai_smoothie' else product['image'])})
     return shown,public_promos
+
+def priced_addons(product,requested):
+    """Validate owner-defined extras and snapshot their names/prices at checkout."""
+    if not isinstance(requested,list) or len(requested)>15:
+        raise ValueError('بيانات الإضافات غير صحيحة')
+    allowed={a['id']:a for a in product.get('addons',[])}
+    details=[];seen=set();extra_total=0
+    for item in requested:
+        if not isinstance(item,dict):
+            raise ValueError('بيانات الإضافة غير صحيحة')
+        aid=item.get('id');qty=item.get('qty')
+        if type(aid)!=int or type(qty)!=int or aid in seen:
+            raise ValueError('الإضافة مكررة أو غير صحيحة')
+        addon=allowed.get(aid)
+        if not addon or not 1<=qty<=addon['max_qty']:
+            raise ValueError('الإضافة غير متوفرة أو عددها أكبر من المسموح')
+        seen.add(aid)
+        extra_total+=qty*addon['price_fils']
+        details.append({'id':aid,'name':addon['name'],'qty':qty,'price_fils':addon['price_fils']})
+    return details,extra_total
 
 def fils(value):
     if isinstance(value,bool) or not isinstance(value,(int,float,str)):return None
