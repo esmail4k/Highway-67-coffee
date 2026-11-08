@@ -28,14 +28,14 @@ $('logout').onclick=async()=>{await api('/api/staff/logout','POST',{}).catch(()=
 async function boot(){await refreshOrderStatus();try{const r=await api('/api/staff/session');loginVisible(!r.authenticated);if(r.authenticated)await refresh()}catch{loginVisible(true)}}
 async function refresh(){if(updating||!$('loginScreen').classList.contains('hidden'))return;updating=true;try{let latest=await api('/api/staff/overview');if(data){const before=new Set((data.orders||[]).map(x=>x.id));const added=(latest.orders||[]).filter(x=>!before.has(x.id));$('refreshLabel').textContent=added.length?`وصل ${added.length} طلب جديد`:'تحديث تلقائي كل 5 ثوانٍ'}data=latest;render()}catch(e){if(e.message.includes('دخول'))loginVisible(true);else $('refreshLabel').textContent=e.message}finally{updating=false}}
 function render(){if(!data)return;const s=data.shift;
- $('shiftStatus').textContent=s?'الوردية #'+s.id+' مفتوحة':'اليوم مغلق — ابدأ يوماً جديداً';$('shiftStatus').classList.toggle('on',!!s);
+ $('shiftStatus').textContent=s?'يوم العمل مفتوح':'اليوم مغلق — ابدأ يوماً جديداً';$('shiftStatus').classList.toggle('on',!!s);
  $('startBtn').classList.toggle('hidden',!!s);$('endBtn').classList.toggle('hidden',!s);
  $('stats').innerHTML=summaryCards(data);const visible=data.orders.filter(o=>selectedState==='all'||o.status===selectedState).sort((a,b)=>({new:0,ready:1,delivered:2,cancelled:3}[a.status]-{new:0,ready:1,delivered:2,cancelled:3}[b.status])||b.id-a.id);
  $('orders').innerHTML=visible.length?visible.map(o=>bill(o,true)).join(''):'<div class="empty">لا توجد طلبات في هذه الوردية بعد.</div>';
  document.querySelectorAll('[data-order]').forEach(b=>b.onclick=()=>advance(Number(b.dataset.order),b.dataset.status));
  bindStaffInvoiceControls();
- $('top').innerHTML=topProducts(data);$('detail').innerHTML=`<div class="kpirow"><span>رقم الوردية</span><b>${s?'#'+s.id:'—'}</b></div><div class="kpirow"><span>طلبات جاهزة</span><b>${data.counts.ready}</b></div><div class="kpirow"><span>طلبات مُسلّمة</span><b>${data.counts.delivered}</b></div><div class="kpirow"><span>صافي مبيعات الوردية</span><b>${fmt(data.sales_fils)}</b></div>`;
- $('archive').innerHTML=(data.shifts||[]).filter(x=>x.ended_at).length?data.shifts.filter(x=>x.ended_at).map(s=>`<article class="shift"><div><strong>${shiftName(s)}</strong><p>انتهى: ${when(s.ended_at)} | ${s.order_count} طلب | ${fmt(s.sales_fils)}</p></div><div class="actions"><button class="button outline sm" data-viewshift="${s.id}">عرض</button></div></article>`).join(''):'<div class="empty">لا توجد أيام سابقة ظاهرة لك.</div>';
+ $('top').innerHTML=topProducts(data);$('detail').innerHTML=`<div class="kpirow"><span>طلبات جاهزة</span><b>${data.counts.ready}</b></div><div class="kpirow"><span>طلبات مُسلّمة</span><b>${data.counts.delivered}</b></div><div class="kpirow"><span>صافي مبيعات الوردية</span><b>${fmt(data.sales_fils)}</b></div>`;
+ $('archive').innerHTML='';
  document.querySelectorAll('[data-viewshift]').forEach(b=>b.onclick=()=>openShift(Number(b.dataset.viewshift)));
 
 }
