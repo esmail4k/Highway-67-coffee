@@ -192,7 +192,7 @@ $('checkoutForm').onsubmit=async e=>{
 function resetFeedback(){
  feedbackLiked=null;feedbackStars=null;feedbackReasons.clear();
  $('feedbackCard').hidden=false;$('feedbackReasons').hidden=true;$('feedbackComment').value='';$('feedbackError').textContent='';
- $('sendFeedback').disabled=false;$('sendFeedback').textContent='إرسال التقييم 💛';
+ $('sendFeedback').disabled=false;$('sendFeedback').textContent='إرسال التقييم ';
  document.querySelectorAll('[data-liked],[data-reason],[data-star]').forEach(b=>b.classList.remove('active'));
 }
 document.querySelectorAll('[data-liked]').forEach(b=>b.onclick=()=>{
@@ -227,7 +227,7 @@ $('sendFeedback').onclick=async()=>{
   const data=await res.json();
   if(!res.ok)throw Error(data.error||'تعذر حفظ التقييم');
   $('feedbackCard').hidden=true;
-  notice('💛 شكراً من القلب! تقييمك وصلنا');
+  notice(' شكراً من القلب! تقييمك وصلنا');
   feedbackToken=null;
  }catch(err){$('feedbackError').textContent=err.message;$('sendFeedback').disabled=false}
 };
