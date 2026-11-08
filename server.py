@@ -1053,6 +1053,48 @@ class Handler(BaseHTTPRequestHandler):
                 record_log(d,'المدير','order_deleted',oid,'حذف الفاتورة من لوحة المدير')
                 d.commit()
             return self.sendj(200,{'ok':True,'deleted_order_id':oid})
+        if path=='/api/owner/addons/save':
+            if not self.auth('owner'):return
+            try:
+                addon_id=data.get('id')
+                pid=data.get('product_id')
+                name=textfield(data,'name',70,True)
+                price=fils(data.get('price'))
+                max_qty=data.get('max_qty',1)
+                enabled=data.get('enabled',True)
+                if addon_id is not None and (type(addon_id)!=int or addon_id<=0):
+                    raise ValueError('معرف الإضافة غير صحيح')
+                if not isinstance(pid,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{2,70}',pid):
+                    raise ValueError('المنتج غير صحيح')
+                if price is None or price>100000 or type(max_qty)!=int or not 1<=max_qty<=10 or type(enabled)!=bool:
+                    raise ValueError('تأكد من السعر وعدد مرات الإضافة')
+            except ValueError as e:return self.sendj(400,{'error':str(e)})
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                if not d.execute('SELECT 1 FROM products WHERE id=? AND id!=?',(pid,'piccolo')).fetchone():
+                    return self.sendj(404,{'error':'المنتج غير موجود'})
+                if addon_id is None:
+                    addon_id=d.execute('INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,?)',
+                        (pid,name,price,max_qty,int(enabled))).lastrowid
+                else:
+                    changed=d.execute('UPDATE product_addons SET name=?,price_fils=?,max_qty=?,enabled=? WHERE id=? AND product_id=?',
+                        (name,price,max_qty,int(enabled),addon_id,pid))
+                    if not changed.rowcount:return self.sendj(404,{'error':'الإضافة غير موجودة'})
+                record_log(d,'المدير','addon_saved',None,f'المنتج {pid}، الإضافة {name}، السعر {price/100:.2f}، العدد {max_qty}')
+                d.commit()
+            return self.sendj(200,{'ok':True,'id':addon_id})
+        match=re.fullmatch(r'/api/owner/addons/(\d+)/delete',path)
+        if match:
+            if not self.auth('owner'):return
+            addon_id=int(match.group(1))
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                addon=d.execute('SELECT * FROM product_addons WHERE id=?',(addon_id,)).fetchone()
+                if not addon:return self.sendj(404,{'error':'الإضافة غير موجودة'})
+                d.execute('DELETE FROM product_addons WHERE id=?',(addon_id,))
+                record_log(d,'المدير','addon_deleted',None,f"حذف إضافة {addon['name']} من {addon['product_id']}")
+                d.commit()
+            return self.sendj(200,{'ok':True})
         if path=='/api/owner/product/save':
             if not self.auth('owner'):return
             try:
