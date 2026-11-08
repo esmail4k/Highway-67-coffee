@@ -310,4 +310,41 @@ class InvoiceWorkflowTest(unittest.TestCase):
         code,overview=self.request(self.staff,'GET','/api/staff/overview')
         self.assertEqual(len(next(o for o in overview['orders'] if o['id']==oid)['items']),2)
 
+
+    def test_owner_uploaded_image_uses_persistent_database(self):
+        import base64
+        import io
+        import sqlite3
+        from PIL import Image
+        code,login=self.request(self.owner,'POST','/api/owner/login',
+            {'username':'esmail','password':'test-owner-strong-password'})
+        self.assertEqual(code,200,login)
+        code,created=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':None,'name':'مشروب بصورة مخصصة','category':'Cold Drinks',
+            'price':18,'discount_percent':0,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200,created)
+        product_id=created['id']
+        buffer=io.BytesIO()
+        Image.new('RGB',(16,16),(115,20,90)).save(buffer,'PNG')
+        payload={'image':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii')}
+        code,image_result=self.request(self.owner,'POST',
+            f'/api/owner/products/{product_id}/image',payload)
+        self.assertEqual(code,200,image_result)
+        filename=image_result['image']
+        self.assertTrue(filename.startswith('uploads/'))
+        with sqlite3.connect(Path(self.tmp.name)/'highway67.sqlite3') as db:
+            stored=db.execute('SELECT content FROM uploaded_images WHERE filename=?',(filename,)).fetchone()
+            self.assertIsNotNone(stored)
+            self.assertTrue(stored[0].startswith(b'RIFF'))
+        request=Request(self.base+'/assets/'+filename,method='GET')
+        with self.customer.open(request,timeout=10) as response:
+            self.assertEqual(response.status,200)
+            self.assertEqual(response.headers.get_content_type(),'image/webp')
+            self.assertTrue(response.read().startswith(b'RIFF'))
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200)
+        product=next(p for p in menu['products'] if p['id']==product_id)
+        self.assertEqual(product['image'],filename)
+
 if __name__=='__main__':unittest.main()
