@@ -155,10 +155,47 @@ $('refreshOwnerFeedback').onclick=loadOwnerReviews;
 function modal(id,on){$(id).classList.toggle('show',on)}document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>modal(b.dataset.close,false));document.querySelectorAll('.modalBackdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)modal(m.id,false)}));
 function productModal(p){editProduct=p||null;$('productTitle').textContent=p?'تعديل المنتج':'إضافة منتج جديد';$('productId').value=p?.id||'';$('productName').value=p?.name||'';$('productCat').value=p?.category||'Hot Drinks';$('productPrice').value=p?(p.price_fils/100).toFixed(2):'';$('productDiscount').value=p?.discount_percent||0;$('productAvailable').checked=p?!!p.available:true;$('productPromoOnly').checked=p?!!p.promo_only:false;$('productImage').src=asset(p?.image||'hot.webp');$('productUpload').value='';errtxt('productError','');modal('productModal',true)}
 $('newProduct').onclick=()=>productModal();$('productUpload').onchange=e=>{const f=e.target.files[0];if(f)$('productImage').src=URL.createObjectURL(f)};
-async function fileToDataUrl(f){return await new Promise((ok,bad)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>bad(Error('تعذر قراءة الصورة'));r.readAsDataURL(f)})}
+async function fileToDataUrl(file){
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw Error('اختر صورة PNG أو JPG أو WebP');
+ const url=URL.createObjectURL(file);
+ let image;
+ try{
+  image=await new Promise((resolve,reject)=>{
+   const photo=new Image();
+   photo.onload=()=>resolve(photo);
+   photo.onerror=()=>reject(Error('تعذر فتح الصورة'));
+   photo.src=url;
+  });
+  // Resize and compress locally before sending. The server accepts up to 850 KB.
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw Error('هذا المتصفح لا يدعم تجهيز الصور');
+  for(const maxDim of [1000,850,700,560,440]){
+   const scale=Math.min(1,maxDim/Math.max(image.naturalWidth,image.naturalHeight));
+   canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+   canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+   ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+   ctx.drawImage(image,0,0,canvas.width,canvas.height);
+   for(const quality of [.85,.72,.58]){
+    const result=canvas.toDataURL('image/webp',quality);
+    if(result.startsWith('data:image/webp;base64,')&&(result.length-result.indexOf(',')-1)*.75<800000)return result;
+   }
+  }
+  throw Error('تعذر تصغير الصورة. اختر صورة بدقة أقل');
+ }finally{URL.revokeObjectURL(url)}
+}
 $('productForm').onsubmit=async e=>{e.preventDefault();$('saveProduct').disabled=true;errtxt('productError','');try{
  const payload={id:$('productId').value||null,name:$('productName').value,category:$('productCat').value,price:Number($('productPrice').value),discount_percent:Number($('productDiscount').value),available:$('productAvailable').checked,promo_only:$('productPromoOnly').checked};
- const r=await api('/api/owner/product/save','POST',payload);const file=$('productUpload').files[0];if(file){if(file.size>850000)throw Error('حُفظ المنتج لكن الصورة كبيرة. اختر صورة أقل من 850KB');const value=await fileToDataUrl(file);await api('/api/owner/products/'+encodeURIComponent(r.id)+'/image','POST',{image:value})}
+ const file=$('productUpload').files[0];
+ // Validate and compress the image BEFORE creating the product, to avoid partial saves.
+ const imageValue=file?await fileToDataUrl(file):null;
+ const r=await api('/api/owner/product/save','POST',payload);
+ // If the upload fails, subsequent Save retries edit the same product instead of duplicating it.
+ $('productId').value=r.id;
+ if(imageValue){
+  await api('/api/owner/products/'+encodeURIComponent(r.id)+'/image','POST',{image:imageValue});
+  $('productUpload').value='';
+ }
  modal('productModal',false);await loadAll();
  }catch(err){errtxt('productError',err.message)}finally{$('saveProduct').disabled=false}};
 function promoModal(p){editPromo=p||null;$('promoTitle').textContent=p?'تعديل العرض':'إنشاء عرض';$('promoId').value=p?.id||'';$('promoName').value=p?.title||'';$('promoSubtitle').value=p?.subtitle||'';$('promoProduct').value=p?.product_id||products[0]?.id||'';$('promoDiscount').value=p?.discount_percent||0;$('promoMode').value=p?.mode||'weekly';$('promoStartTime').value=p?.start_time||'00:00';$('promoEndTime').value=p?.end_time||'23:59';$('promoStartAt').value=p?.start_at||'';$('promoEndAt').value=p?.end_at||'';$('promoEnabled').checked=p?!!p.enabled:true;let days=[];try{days=JSON.parse(p?.days||'[0]')}catch{}document.querySelectorAll('.dayCheck').forEach(x=>x.checked=days.includes(Number(x.value)));$('promoMode').onchange();errtxt('promoError','');modal('promoModal',true)}
