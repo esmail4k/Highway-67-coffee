@@ -113,7 +113,7 @@ async function loadFeedback(){
   const result=await api('/api/staff/feedback');
   const entries=result.feedback||[];
   list.innerHTML=entries.length?entries.map(x=>{
-   const feeling=x.liked===1?'😍 أعجبهم':x.liked===0?'😕 يحتاج تحسين':'— بدون تقييم للطعم';
+   const feeling=x.liked===1?' أعجبهم':x.liked===0?' يحتاج تحسين':'— بدون تقييم للطعم';
    const reasons=(x.reasons||[]).map(r=>feedbackReasonNames[r]||r).join(' · ');
    const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
    return `<article class="review-item"><div class="review-head"><strong>#${Number(x.order_id)} · ${feeling}</strong><small>${when(x.created_at)}</small></div>
