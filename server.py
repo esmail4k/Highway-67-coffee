@@ -38,7 +38,8 @@ OWNER_PHONE_E164=os.environ.get('OWNER_PHONE_E164','').strip()
 SMS_ACCOUNT_SID=os.environ.get('TWILIO_ACCOUNT_SID','').strip()
 SMS_AUTH_TOKEN=os.environ.get('TWILIO_AUTH_TOKEN','').strip()
 SMS_VERIFY_SERVICE_SID=os.environ.get('TWILIO_VERIFY_SERVICE_SID','').strip()
-REQUIRE_OWNER_SMS_2FA=os.environ.get('REQUIRE_OWNER_SMS_2FA','1')=='1'
+REQUIRE_OWNER_SMS_2FA=os.environ.get('REQUIRE_OWNER_SMS_2FA','0')=='1'
+OWNER_OTP_ENABLED=os.environ.get('OWNER_OTP_ENABLED','0')=='1'
 REQUIRE_STAFF_SMS_2FA=os.environ.get('REQUIRE_STAFF_SMS_2FA','1')=='1'
 UAE=ZoneInfo('Asia/Dubai')
 LOCK=threading.RLock()
@@ -143,6 +144,13 @@ def init():
         add_column(d,'order_items','syrup_qty','INTEGER NOT NULL DEFAULT 0')
         add_column(d,'order_items','item_note',"TEXT NOT NULL DEFAULT ''")
         add_column(d,'orders','cancel_reason',"TEXT NOT NULL DEFAULT ''")
+        add_column(d,'orders','deleted_at','TEXT')
+        add_column(d,'orders','deleted_by',"TEXT NOT NULL DEFAULT ''")
+        d.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
+            actor TEXT NOT NULL, action TEXT NOT NULL, order_id INTEGER,
+            detail TEXT NOT NULL DEFAULT '')''')
+        d.execute('CREATE INDEX IF NOT EXISTS activity_logs_recent ON activity_logs(id DESC)')
         d.executescript('''
         CREATE TABLE IF NOT EXISTS order_feedback_tokens(
             order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
@@ -192,6 +200,9 @@ def init():
             d.execute('UPDATE products SET price_fils=1200 WHERE id=?',('nutella',))
             d.execute('UPDATE products SET price_fils=1300,name=? WHERE id=?',('كرواسون جبس جبن','chips'))
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
+        # DSI begins as unavailable until the owner supplies a price.
+        d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
+                  ('dsi','DSI','Cold Drinks',0,'cold-1.webp'))
         # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
         if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
             salt,digest=hash_staff_password(STAFF_PASS)
@@ -223,8 +234,9 @@ def row(x):return dict(x) if x is not None else None
 
 def active_shift(d):return d.execute('SELECT * FROM shifts WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1').fetchone()
 
-def list_orders(d,shift_id):
-    orders=[dict(x) for x in d.execute('SELECT * FROM orders WHERE shift_id=? ORDER BY id DESC',(shift_id,))]
+def list_orders(d,shift_id,include_deleted=False):
+    condition='' if include_deleted else ' AND deleted_at IS NULL'
+    orders=[dict(x) for x in d.execute('SELECT * FROM orders WHERE shift_id=?'+condition+' ORDER BY id DESC',(shift_id,))]
     if orders:
         ids=[o['id'] for o in orders]
         holder=','.join('?'*len(ids))
@@ -243,17 +255,35 @@ def metrics(orders):
     return {'sales_fils':sum(o['total_fils'] for o in delivered),'total_orders':len(orders),'counts':counts,
             'top_products':sorted(tops.values(),key=lambda x:(-x['qty'],-x['sales_fils']))[:8]}
 
-def shift_summary(d,shift):
-    orders=list_orders(d,shift['id']) if shift else []
-    return {'shift':row(shift),'orders':orders,**metrics(orders)}
+def shift_summary(d,shift,include_deleted=False):
+    orders=list_orders(d,shift['id'],include_deleted) if shift else []
+    visible=[o for o in orders if not o['deleted_at']]
+    return {'shift':row(shift),'orders':orders,**metrics(visible)}
 
 def shift_cards(d,role):
     where='' if role=='owner' else 'WHERE hidden_for_staff=0'
     shifts=[dict(s) for s in d.execute(f'SELECT * FROM shifts {where} ORDER BY id DESC LIMIT 300')]
     for s in shifts:
-        stat=d.execute("SELECT COUNT(*) n,SUM(CASE WHEN status='delivered' THEN total_fils ELSE 0 END) sales FROM orders WHERE shift_id=?",(s['id'],)).fetchone()
+        stat=d.execute("SELECT COUNT(*) n,SUM(CASE WHEN status='delivered' AND deleted_at IS NULL THEN total_fils ELSE 0 END) sales FROM orders WHERE shift_id=? AND deleted_at IS NULL",(s['id'],)).fetchone()
         s['order_count']=stat['n'];s['sales_fils']=stat['sales'] or 0
     return shifts
+
+def actor_name(handler,role):
+    if role=='owner':return 'المدير'
+    cookies=SimpleCookie()
+    try:cookies.load(handler.headers.get('Cookie',''))
+    except:return 'موظف'
+    token=cookies.get('hw67_staff')
+    try:
+        staff_id=int(token.value.split('.')[2])
+        with con() as d:
+            record=d.execute('SELECT username FROM staff_accounts WHERE id=?',(staff_id,)).fetchone()
+        return record['username'] if record else 'موظف'
+    except (ValueError,IndexError,AttributeError):return 'موظف'
+
+def record_log(d,actor,action,order_id,detail):
+    d.execute('INSERT INTO activity_logs(created_at,actor,action,order_id,detail) VALUES(?,?,?,?,?)',
+              (utcnow(),actor,action,order_id,detail))
 
 def parse_time(s):
     return datetime.strptime(s,'%H:%M').time()
@@ -426,7 +456,7 @@ class Handler(BaseHTTPRequestHandler):
                     '''SELECT o.id,o.created_at,o.customer_name,o.phone,o.car_plate,
                               o.notes,o.status,o.total_fils,s.local_date
                          FROM orders o JOIN shifts s ON s.id=o.shift_id
-                         ORDER BY o.id DESC''')]
+                         WHERE o.deleted_at IS NULL ORDER BY o.id DESC''')]
                 for o in orders:
                     items=d.execute('SELECT name,qty,syrup,syrup_qty,item_note FROM order_items WHERE order_id=?',(o['id'],)).fetchall()
                     o['items']=' | '.join(str(i['qty'])+' × '+i['name']+
@@ -495,14 +525,21 @@ class Handler(BaseHTTPRequestHandler):
                       SUM(CASE WHEN o.status='new' THEN 1 ELSE 0 END) new_orders,
                       SUM(CASE WHEN o.status='ready' THEN 1 ELSE 0 END) ready_orders
                     FROM orders o JOIN shifts s ON s.id=o.shift_id
-                    ''',(today,this_month)).fetchone()
+                    WHERE o.deleted_at IS NULL''',(today,this_month)).fetchone()
                 result['business_totals']=dict(summary)
                 result['daily_sales']=[dict(x) for x in d.execute('''
                     SELECT s.local_date day,
                      COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_fils ELSE 0 END),0) sales_fils
-                    FROM shifts s LEFT JOIN orders o ON o.shift_id=s.id
+                    FROM shifts s LEFT JOIN orders o ON o.shift_id=s.id AND o.deleted_at IS NULL
                     GROUP BY s.local_date ORDER BY s.local_date DESC LIMIT 14''')]
             return self.sendj(200,result)
+        if path=='/api/owner/activity':
+            if not self.auth('owner'):return
+            with con() as d:
+                logs=[dict(x) for x in d.execute('SELECT * FROM activity_logs ORDER BY id DESC LIMIT 500')]
+                removed=[dict(x) for x in d.execute(
+                    "SELECT id,customer_name,total_fils,deleted_at,deleted_by FROM orders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 300")]
+            return self.sendj(200,{'logs':logs,'deleted_orders':removed})
         if path=='/api/owner/feedback':
             if not self.auth('owner'):return
             with con() as d:
@@ -530,7 +567,7 @@ class Handler(BaseHTTPRequestHandler):
             with con() as d:
                 shift=d.execute('SELECT * FROM shifts WHERE id=?',(ident,)).fetchone()
                 if not shift or (role=='staff' and shift['hidden_for_staff']):return self.sendj(404,{'error':'اليوم غير موجود في سجلك'})
-                result=shift_summary(d,shift)
+                result=shift_summary(d,shift,include_deleted=(role=='owner'))
             return self.sendj(200,result)
         if path in ('/','/staff','/staff/','/owner','/owner/'):
             path={'/':'/index.html','/staff':'/staff.html','/staff/':'/staff.html','/owner':'/owner.html','/owner/':'/owner.html'}[path]
@@ -577,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
             if not valid:
                 time.sleep(.25);return self.sendj(401,{'error':'اسم المستخدم أو كلمة المرور غير صحيحة'})
             required=REQUIRE_OWNER_SMS_2FA if role=='owner' else REQUIRE_STAFF_SMS_2FA
-            method='totp' if role=='owner' and OWNER_TOTP_SECRET else ('sms' if required else 'none')
+            method=('totp' if OWNER_TOTP_SECRET else ('sms' if required else 'none')) if role=='owner' and OWNER_OTP_ENABLED else ('sms' if role=='staff' and required else 'none')
             if role=='owner' and not OWNER_PANEL_ENABLED:
                 return self.sendj(503,{'error':'صفحة المالك غير مفعّلة'})
             if method!='none':
@@ -768,7 +805,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK,con() as d:
                 d.execute('BEGIN IMMEDIATE');shift=active_shift(d)
                 if not shift:return self.sendj(409,{'error':'لا يوجد يوم عمل مفتوح'})
-                n=d.execute("SELECT COUNT(*) FROM orders WHERE shift_id=? AND status IN ('new','ready')",(shift['id'],)).fetchone()[0]
+                n=d.execute("SELECT COUNT(*) FROM orders WHERE shift_id=? AND deleted_at IS NULL AND status IN ('new','ready')",(shift['id'],)).fetchone()[0]
                 if n:
                     return self.sendj(409,{'error':f'يوجد {n} طلب لم يُسلّم بعد. لا يمكن إنهاء اليوم قبل تسليم جميع الطلبات.', 'pending_count':n})
                 finished=utcnow()
@@ -788,8 +825,66 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 cur=d.execute('UPDATE products SET available=? WHERE id=?',(int(available),pid))
                 if cur.rowcount==0:return self.sendj(404,{'error':'المنتج غير موجود'})
+                record_log(d,actor_name(self,role),'product_availability',None,f"{pid}: {'متوفر' if available else 'غير متوفر'}")
                 d.commit()
             return self.sendj(200,{'ok':True,'id':pid,'available':available})
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\\d+)/items/(\\d+)/(quantity|remove)',path)
+        if match:
+            role,oid,item_id,action=match.group(1),int(match.group(2)),int(match.group(3)),match.group(4)
+            if not self.auth(role):return
+            new_qty=data.get('qty')
+            if action=='quantity' and (type(new_qty)!=int or not 1<=new_qty<=30):
+                return self.sendj(400,{'error':'الكمية يجب أن تكون من 1 إلى 30'})
+            actor=actor_name(self,role)
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                order=d.execute('SELECT o.*,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
+                if not order or order['deleted_at']:return self.sendj(404,{'error':'الفاتورة غير موجودة'})
+                if order['ended_at'] or order['status'] not in ('new','ready'):
+                    return self.sendj(409,{'error':'يمكن تعديل الفاتورة قبل التسليم وإغلاق الوردية فقط'})
+                item=d.execute('SELECT * FROM order_items WHERE id=? AND order_id=?',(item_id,oid)).fetchone()
+                if not item:return self.sendj(404,{'error':'المنتج غير موجود في الفاتورة'})
+                old_qty=item['qty']
+                if action=='remove':
+                    d.execute('DELETE FROM order_items WHERE id=?',(item_id,))
+                    description=f"حذف {item['name']} (الكمية {old_qty}) من الفاتورة"
+                else:
+                    d.execute('UPDATE order_items SET qty=? WHERE id=?',(new_qty,item_id))
+                    description=f"تعديل كمية {item['name']} من {old_qty} إلى {new_qty}"
+                total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
+                if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
+                if total==0:
+                    d.execute("UPDATE orders SET deleted_at=?,deleted_by=? WHERE id=?",(utcnow(),actor,oid))
+                    description+='؛ حذف الفاتورة تلقائياً لأنها أصبحت فارغة'
+                d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
+                record_log(d,actor,'item_removed' if action=='remove' else 'quantity_changed',oid,
+                           description+f"؛ الإجمالي {order['total_fils']/100:.2f} ← {total/100:.2f} درهم")
+                d.commit()
+            return self.sendj(200,{'ok':True,'total_fils':total})
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\\d+)/(delete|restore)',path)
+        if match:
+            role,oid,action=match.group(1),int(match.group(2)),match.group(3)
+            if not self.auth(role):return
+            if action=='restore' and role!='owner':return self.sendj(403,{'error':'الاسترجاع للمدير فقط'})
+            actor=actor_name(self,role)
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                order=d.execute('SELECT o.*,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
+                if not order:return self.sendj(404,{'error':'الفاتورة غير موجودة'})
+                if action=='restore':
+                    if not order['deleted_at']:return self.sendj(409,{'error':'الفاتورة غير محذوفة'})
+                    d.execute("UPDATE orders SET deleted_at=NULL,deleted_by='' WHERE id=?",(oid,))
+                    record_log(d,actor,'order_restored',oid,f"استرجاع الفاتورة بقيمة {order['total_fils']/100:.2f} درهم")
+                else:
+                    if order['deleted_at']:return self.sendj(409,{'error':'الفاتورة محذوفة مسبقاً'})
+                    if role=='staff' and (order['ended_at'] or order['status']=='delivered'):
+                        return self.sendj(409,{'error':'لا يمكن للموظف حذف فاتورة مسلّمة أو من وردية مغلقة'})
+                    if data.get('confirmation')!='DELETE '+str(oid):
+                        return self.sendj(400,{'error':'تأكيد حذف الفاتورة غير صحيح'})
+                    d.execute('UPDATE orders SET deleted_at=?,deleted_by=? WHERE id=?',(utcnow(),actor,oid))
+                    record_log(d,actor,'order_deleted',oid,f"حذف فاتورة بقيمة {order['total_fils']/100:.2f} درهم")
+                d.commit()
+            return self.sendj(200,{'ok':True,'order_id':oid})
         match=re.fullmatch(r'/api/staff/orders/(\d+)/status',path)
         if match:
             if not self.auth('staff'):return
@@ -799,6 +894,7 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 order=d.execute('SELECT o.*,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
                 if not order:return self.sendj(404,{'error':'الطلب غير موجود'})
+                if order['deleted_at']:return self.sendj(409,{'error':'الفاتورة محذوفة'})
                 if order['ended_at']:return self.sendj(409,{'error':'هذا اليوم منتهي ولا يمكن تغيير حالته'})
                 if order['status']!=('new' if state=='ready' else 'ready'):return self.sendj(409,{'error':'الطلب تغيرت حالته مسبقاً'})
                 col='ready_at' if state=='ready' else 'delivered_at'
@@ -843,9 +939,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.sendj(400,{'error':'تأكيد حذف الفاتورة غير صحيح'})
             with LOCK,con() as d:
                 d.execute('BEGIN IMMEDIATE')
-                order=d.execute('SELECT id,shift_id FROM orders WHERE id=?',(oid,)).fetchone()
+                order=d.execute('SELECT id,shift_id,deleted_at FROM orders WHERE id=?',(oid,)).fetchone()
                 if order is None:return self.sendj(404,{'error':'الفاتورة غير موجودة أو سبق حذفها'})
-                d.execute('DELETE FROM orders WHERE id=?',(oid,))
+                if order['deleted_at']:return self.sendj(409,{'error':'الفاتورة محذوفة مسبقاً'})
+                d.execute("UPDATE orders SET deleted_at=?,deleted_by='المدير' WHERE id=?",(utcnow(),oid))
+                record_log(d,'المدير','order_deleted',oid,'حذف الفاتورة من لوحة المدير')
                 d.commit()
             return self.sendj(200,{'ok':True,'deleted_order_id':oid})
         if path=='/api/owner/product/save':
@@ -933,9 +1031,9 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     if (not OWNER_PASS and not MENU_ONLY) or len(SECRET)<32:
         raise SystemExit('Set OWNER_PASSWORD for admin access and a 32+ character SESSION_SECRET before running the server.')
-    if ((REQUIRE_OWNER_SMS_2FA and not OWNER_TOTP_SECRET) or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
+    if ((OWNER_OTP_ENABLED and REQUIRE_OWNER_SMS_2FA and not OWNER_TOTP_SECRET) or REQUIRE_STAFF_SMS_2FA) and not twilio_ready():
         print('SECURITY NOTICE: SMS 2FA is required but not configured. Management login will be blocked until configured.',flush=True)
-    if HOST not in ('127.0.0.1','localhost','::1') and OWNER_PANEL_ENABLED and not (OWNER_TOTP_SECRET or (REQUIRE_OWNER_SMS_2FA and twilio_ready())):
+    if HOST not in ('127.0.0.1','localhost','::1') and OWNER_PANEL_ENABLED and OWNER_OTP_ENABLED and not (OWNER_TOTP_SECRET or (REQUIRE_OWNER_SMS_2FA and twilio_ready())):
         raise SystemExit('Owner 2FA is mandatory on the public service (TOTP or configured SMS).')
     if OWNER_PANEL_ENABLED and not OWNER_PASS:
         raise SystemExit('Owner password required before enabling owner panel.')
