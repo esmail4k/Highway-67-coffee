@@ -178,7 +178,7 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <p id="customItem"></p><p class="custom-sub">اختر نكهة السيرب — الخيارات غير المتاحة تظهر لك بوضوح.</p>
   <fieldset class="syrup-options"><legend>إضافات السيرب</legend>
     <label class="syrup-option"><input type="radio" name="syrup" value="" checked><span>بدون سيرب إضافي</span><small>متوفر</small></label>
-    <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل 🍮 — جرعة واحدة</span><small>+1 AED</small></label>
+    <label class="syrup-option"><input type="radio" name="syrup" value="caramel"><span>كراميل  — جرعة واحدة</span><small>+1 AED</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="vanilla" disabled><span>فانيلا</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="hazelnut" disabled><span>بندق (هازلنت)</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="chocolate" disabled><span>شوكولاتة</span><small>غير متوفر</small></label>
@@ -189,26 +189,26 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 <div id="cartStep"><div id="cartItems"></div><button type="button" id="clearCart" class="clearCart" hidden>تفريغ السلة</button><div class="sum"><span>المجموع</span><span id="total">0 AED</span></div><button class="checkout" id="checkout">إتمام الطلب</button><p class="msg">الدفع عند الاستلام. لا يُخصم أي مبلغ من بطاقتك عبر الموقع.</p></div>
 <form id="checkoutForm" class="checkoutForm" hidden><label for="customerName">اسم الزبون</label><input id="customerName" name="customerName" autocomplete="name" required maxlength="65" placeholder="اسمك"><label for="customerPhone">رقم الهاتف</label><input id="customerPhone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="05xxxxxxxx"><label for="customerCar">رقم السيارة</label><input id="customerCar" name="customerCar" required maxlength="32" placeholder="رقم اللوحة / رمز اللوحة"><div class="checkout-line-title">ملاحظات لكل منتج (اختياري)</div><p class="checkout-line-help">لو تبا مشروب بدون سكر أو عندك طلب خاص، اكتب الملاحظة تحت المنتج.</p><div id="checkoutItemNotes" class="checkout-line-notes"></div><label for="customerNotes">ملاحظات عامة على الطلب (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: بدون سكر، ثلج أقل..."></textarea><div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div><p class="subnote" id="checkoutError">بعد التأكيد، توصّل الطلبية مباشرة إلى شاشة الموظفين.</p><button id="submitOrder" type="submit">تأكيد وإرسال الطلب</button><button type="button" id="goCart" class="back">الرجوع إلى السلة</button></form>
 <div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3><p id="receiptText"></p><section class="feedback-card" id="feedbackCard" aria-labelledby="feedbackTitle">
-  <div class="feedback-kicker">رأيك يصنع فرقاً ✨</div><h4 id="feedbackTitle">كيف كانت تجربتك؟</h4>
+  <div class="feedback-kicker">رأيك يصنع فرقاً </div><h4 id="feedbackTitle">كيف كانت تجربتك؟</h4>
   <p class="feedback-hint">التقييم اختياري تماماً؛ تقدر ترجع له بعد ما تجرّب طلبك.</p>
   <div class="feedback-prompt">هل أعجبك الطلب؟</div>
-  <div class="feedback-choices"><button type="button" data-liked="yes" class="feedback-choice">😍 عجبني!</button><button type="button" data-liked="no" class="feedback-choice">😕 ممكن يتحسن</button></div>
+  <div class="feedback-choices"><button type="button" data-liked="yes" class="feedback-choice"> عجبني!</button><button type="button" data-liked="no" class="feedback-choice"> ممكن يتحسن</button></div>
   <div id="feedbackReasons" class="feedback-reasons" hidden>
     <p>وش اللي ما عجبك؟ اختار اللي ينطبق عليك:</p>
     <div class="feedback-tags">
-      <button type="button" data-reason="too_sweet">🍯 حالي زيادة</button>
-      <button type="button" data-reason="not_hot">🧊 الحرارة مب مضبوطة</button>
-      <button type="button" data-reason="taste">😬 الطعم مب مثل المتوقع</button>
-      <button type="button" data-reason="missing">🫤 ناقص إضافة أو طلب</button>
-      <button type="button" data-reason="presentation">📸 الشكل يقدر يتحسن</button>
-      <button type="button" data-reason="other">💬 شي ثاني</button>
+      <button type="button" data-reason="too_sweet"> حالي زيادة</button>
+      <button type="button" data-reason="not_hot"> الحرارة مب مضبوطة</button>
+      <button type="button" data-reason="taste"> الطعم مب مثل المتوقع</button>
+      <button type="button" data-reason="missing"> ناقص إضافة أو طلب</button>
+      <button type="button" data-reason="presentation"> الشكل يقدر يتحسن</button>
+      <button type="button" data-reason="other"> شي ثاني</button>
     </div>
   </div>
   <div class="feedback-prompt">وش تقييمك للخدمة؟</div>
   <div class="service-stars" id="serviceStars" role="group" aria-label="تقييم الخدمة من خمسة"><button type="button" data-star="1">★</button><button type="button" data-star="2">★</button><button type="button" data-star="3">★</button><button type="button" data-star="4">★</button><button type="button" data-star="5">★</button></div>
   <label class="feedback-comment-label" for="feedbackComment">رسالة لنا (اختياري)</label><textarea id="feedbackComment" maxlength="240" placeholder="وش تحب نطور في كوفينا الجديد؟"></textarea>
   <p class="feedback-error" id="feedbackError" role="alert"></p>
-  <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم 💛</button><button type="button" id="skipFeedback">يمكن مرة ثانية</button></div>
+  <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم </button><button type="button" id="skipFeedback">يمكن مرة ثانية</button></div>
 </section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
 <script src="/i18n.js?v=5" defer></script><script src="/app.js?v=5" defer></script></body></html>
