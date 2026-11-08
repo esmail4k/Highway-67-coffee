@@ -112,6 +112,8 @@ def init():
         CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,
           price_fils INTEGER NOT NULL CHECK(price_fils>=0),image TEXT NOT NULL,available INTEGER NOT NULL DEFAULT 1,
           discount_percent INTEGER NOT NULL DEFAULT 0,promo_only INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS uploaded_images (
+          filename TEXT PRIMARY KEY, content BLOB NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS product_addons (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -639,6 +641,17 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/assets/uploads/'):
             filename=path.removeprefix('/assets/uploads/')
             if not re.fullmatch(r'[0-9a-f]{24}\.webp',filename):return self.sendj(404,{'error':'غير موجود'})
+            # Uploaded photos are durable in the SQLite/Postgres snapshot, not Render's ephemeral disk.
+            with con() as d:
+                stored=d.execute('SELECT content FROM uploaded_images WHERE filename=?',('uploads/'+filename,)).fetchone()
+            if stored:
+                buf=bytes(stored['content'])
+                self.send_response(200)
+                self.send_header('Content-Type','image/webp')
+                self.send_header('Content-Length',str(len(buf)))
+                self.common();self.end_headers();self.wfile.write(buf)
+                return
+            # Backward compatibility for any uploads made before this migration.
             file=(DATA/'uploads'/filename).resolve()
             if not file.is_relative_to((DATA/'uploads').resolve()):return self.sendj(404,{'error':'غير موجود'})
         else:
@@ -1136,8 +1149,9 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 old=d.execute('SELECT image FROM products WHERE id=?',(pid,)).fetchone()
                 if old is None:return self.sendj(404,{'error':'المنتج غير موجود'})
-                fname='uploads/'+secrets.token_hex(12)+'.webp';(DATA/'uploads').mkdir(exist_ok=True)
-                (DATA/fname).write_bytes(out.getvalue())
+                fname='uploads/'+secrets.token_hex(12)+'.webp'
+                d.execute('INSERT INTO uploaded_images(filename,content,created_at) VALUES(?,?,?)',
+                          (fname,out.getvalue(),utcnow()))
                 d.execute('UPDATE products SET image=? WHERE id=?',(fname,pid));d.commit()
             return self.sendj(200,{'ok':True,'image':fname})
         if path=='/api/owner/promo/save':
