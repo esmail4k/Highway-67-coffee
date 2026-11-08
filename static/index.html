@@ -135,6 +135,24 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 .checkout-item-note{border:1px solid #eadbc7;border-radius:12px;padding:10px;background:#fffaf4}
 .checkout-item-note b{display:block;font-size:12px;margin-bottom:7px}
 .cart-unavailable{border:1px solid #cda89b;background:#fff4ee;color:#983c2b;border-radius:10px;padding:8px;margin:5px 0 10px;font-size:11px}
+
+.acai-hero[hidden]{display:none!important}
+.hero:has(.acai-hero:not([hidden])){height:clamp(280px,34vw,490px);background:#fff}
+.hero:has(.acai-hero:not([hidden]))>picture,.hero:has(.acai-hero:not([hidden]))>.hero-cover{display:none!important}
+.acai-hero{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:4%;padding:12px 8%;background:radial-gradient(circle at 25% 50%,#fff 0%,#fff 36%,#fff5f7 90%);border:4px solid #790b32;border-radius:19px;direction:ltr}
+.acai-hero:before{content:"";position:absolute;left:0;top:0;bottom:0;width:12px;background:#790b32}
+.acai-hero-photo{width:43%;height:100%;display:flex;align-items:center;justify-content:center;min-width:0}
+.acai-hero-photo img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply}
+.acai-hero-info{width:53%;text-align:center;direction:rtl;z-index:1}
+.acai-hero-tag{display:inline-block;background:#870a34;color:#fff;padding:9px 23px;border-radius:30px;font-size:clamp(13px,1.6vw,21px);font-weight:900}
+.acai-hero-info h2{font-size:clamp(29px,4.6vw,67px);color:#650729;margin:10px 0 0;line-height:1.12}
+.acai-hero-info p{font-size:clamp(16px,2.1vw,30px);margin:4px 0 12px;font-weight:700}
+.acai-hero-prices{display:flex;align-items:center;justify-content:center;gap:20px;direction:ltr}
+.acai-hero-prices del{font-size:clamp(19px,2.2vw,31px);color:#777}
+.acai-hero-prices strong{font-size:clamp(38px,5.7vw,85px);color:#930b3d;line-height:1.1}
+.acai-hero-clock{margin:12px auto 0;background:#22171c;color:#fff;border-radius:12px;padding:10px;font-weight:700;font-size:clamp(12px,1.35vw,18px)}
+.acai-hero-clock b{display:block;font-size:clamp(19px,2.5vw,35px);font-variant-numeric:tabular-nums;direction:ltr}
+@media(max-width:620px){.hero:has(.acai-hero:not([hidden])){height:300px}.acai-hero{gap:2%;padding:12px 5%}.acai-hero-photo{width:44%}.acai-hero-info{width:54%}.acai-hero-tag{padding:6px 9px}.acai-hero-prices{gap:7px}.acai-hero-clock{margin-top:6px;padding:7px 4px}}
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -148,8 +166,10 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 <div class="cart-confirm" id="cartConfirm" role="status" aria-live="polite" hidden>
  <span class="cart-confirm-check">✓</span><div><strong id="cartConfirmName">تمت الإضافة إلى السلة!</strong><small>كمل اختيارك من المنيو بكل راحة</small></div>
  <button type="button" id="cartConfirmOpen">عرض السلة</button><button type="button" id="cartConfirmClose" aria-label="إخفاء">×</button>
-</div><main id="menu"><div class="hero" id="hero"><picture><img src="assets/hero.webp" alt="Highway 67 Coffee — قهوة وكرواسون"/></picture><div class="hero-cover"><div><h1>HIGHWAY 67</h1><small>COFFEE</small><p>Coffee · Croissants · More</p></div><img src="assets/iced.webp" alt="Highway 67 Iced Coffee"></div><button class="previous" id="prevBanner" aria-label="الصورة السابقة">›</button><button class="next" id="nextBanner" aria-label="الصورة التالية">‹</button><div class="dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
-<div class="welcome-note" role="note"><span class="welcome-icon">☕</span><span>نحن كوفي جديد ونسعد بزيارتكم! تحتاج مساعدة في اختيار طلبك؟ كلم النادلة، وبتساعدك بكل سرور.</span></div>
+</div><main id="menu"><div class="hero" id="hero"><div class="acai-hero" id="acaiHero" hidden>
+<div class="acai-hero-photo"><img src="/assets/acai-original-white.jpg" alt="سموذي أساي من Highway 67"></div>
+<div class="acai-hero-info"><span class="acai-hero-tag">عرض مميز - آخر ساعة</span><h2>سموذي أساي</h2><p>Acai Smoothie</p><div class="acai-hero-prices"><del>25 AED</del><strong>15 AED</strong></div><div class="acai-hero-clock">ينتهي العرض الساعة 11:00 مساءً <b id="acaiHeroTimer"></b></div></div></div><picture><img src="assets/hero.webp" alt="Highway 67 Coffee — قهوة وكرواسون"/></picture><div class="hero-cover"><div><h1>HIGHWAY 67</h1><small>COFFEE</small><p>Coffee · Croissants · More</p></div><img src="assets/iced.webp" alt="Highway 67 Iced Coffee"></div><button class="previous" id="prevBanner" aria-label="الصورة السابقة">›</button><button class="next" id="nextBanner" aria-label="الصورة التالية">‹</button><div class="dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
+<div class="welcome-note" role="note"><span>نحن كوفي جديد ونسعد بزيارتكم! تحتاج مساعدة في اختيار طلبك؟ كلم النادلة، وبتساعدك بكل سرور.</span></div>
 <section class="offers" id="offers" aria-label="العروض الحالية" hidden></section>
 <div class="tabs"><button class="tab active" data-cat="all"><svg><use href="#i-all"/></svg>الكل</button><button class="tab" data-cat="Hot Drinks"><svg><use href="#i-cup"/></svg>المشروبات الساخنة</button><button class="tab" data-cat="Cold Drinks"><svg><use href="#i-cold"/></svg>المشروبات الباردة</button><button class="tab" data-cat="Croissants"><svg><use href="#i-crois"/></svg>الكرواسون</button></div><div id="sections"></div><div class="footer" id="about"><b>HIGHWAY 67 COFFEE</b> — AL AIN, UAE<br>COFFEE ON THE ROAD</div></main>
 <div id="customOverlay" class="custom-overlay" hidden></div>
