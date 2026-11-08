@@ -202,7 +202,7 @@ def init():
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
-                  ('dsi','DSI','Cold Drinks',0,'cold-1.webp'))
+                  ('dsi','DSI','Other',0,'iced.webp'))
         # Migrate the single pre-v7 staff login to a dedicated hashed account, once.
         if STAFF_PASS and not d.execute('SELECT 1 FROM staff_accounts LIMIT 1').fetchone():
             salt,digest=hash_staff_password(STAFF_PASS)
@@ -507,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.sendj(200,{'feedback':rows})
         if path=='/api/staff/shifts':
             if not self.auth('staff'):return
-            with con() as d:return self.sendj(200,{'shifts':shift_cards(d,'staff')})
+            return self.sendj(403,{'error':'سجل الورديات متاح للمدير فقط'})
         if path=='/api/owner/overview':
             if not self.auth('owner'):return
             today=localnow().date().isoformat()
@@ -564,6 +564,7 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             role,ident=match.group(1),int(match.group(2))
             if not self.auth(role):return
+            if role=='staff':return self.sendj(403,{'error':'سجل الورديات متاح للمدير فقط'})
             with con() as d:
                 shift=d.execute('SELECT * FROM shifts WHERE id=?',(ident,)).fetchone()
                 if not shift or (role=='staff' and shift['hidden_for_staff']):return self.sendj(404,{'error':'اليوم غير موجود في سجلك'})
@@ -907,6 +908,7 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             role,shift_id,action=match.group(1),int(match.group(2)),match.group(3)
             if not self.auth(role):return
+            if role=='staff':return self.sendj(403,{'error':'تعديل الأرشيف متاح للمدير فقط'})
             if action in ('restore','permanent-delete') and role!='owner':return self.sendj(403,{'error':'هذا الإجراء للمالك فقط'})
             if action=='hide' and role!='staff':return self.sendj(403,{'error':'هذا الإجراء للموظف فقط'})
             with LOCK,con() as d:
