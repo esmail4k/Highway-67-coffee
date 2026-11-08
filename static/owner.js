@@ -73,10 +73,11 @@ function renderOwnerProducts(){
     <div class="pvalue">${p.discount_percent?`<div class="promoPrice"><del class="struck">${fmt(p.price_fils)}</del><strong class="discount">${fmt(Math.floor((p.price_fils*(100-p.discount_percent)+50)/100))}</strong></div>`:fmt(p.price_fils)}</div>
     <span class="owner-stock-state ${live?'':'off'}">${live?'متوفر':'غير متوفر'}</span>
     <button type="button" class="button ${live?'outline':'green'} sm owner-stock-btn" data-availability="${safe(p.id)}" data-value="${live?'false':'true'}">${live?'تعيين غير متوفر':'إعادة التوفر'}</button>
-    <button type="button" class="button outline sm" data-editproduct="${safe(p.id)}">تعديل</button>
+    <button type="button" class="button outline sm" data-editproduct="${safe(p.id)}">تعديل الاسم والمنتج</button><button type="button" class="button sm" data-manage-addons="${safe(p.id)}">الإضافات</button>
   </article>`;
  }).join(''):'<div class="empty">ما حصلنا منتجات بهالبحث.</div>';
  document.querySelectorAll('[data-editproduct]').forEach(b=>b.onclick=()=>productModal(products.find(p=>p.id===b.dataset.editproduct)));
+ document.querySelectorAll('[data-manage-addons]').forEach(b=>b.onclick=()=>openAddonModal(b.dataset.manageAddons));
  document.querySelectorAll('[data-availability]').forEach(b=>b.onclick=async()=>{
   const id=b.dataset.availability,available=b.dataset.value==='true';
   b.disabled=true;
@@ -198,6 +199,64 @@ $('productForm').onsubmit=async e=>{e.preventDefault();$('saveProduct').disabled
  }
  modal('productModal',false);await loadAll();
  }catch(err){errtxt('productError',err.message)}finally{$('saveProduct').disabled=false}};
+let selectedAddonProductId=null;
+function resetAddonEditor(){
+ $('addonId').value='';$('addonName').value='';$('addonPrice').value='';
+ $('addonMaxQty').value='1';$('addonEnabled').checked=true;
+ $('addonFormTitle').textContent='إضافة جديدة';errtxt('addonError','');
+}
+function renderOwnerAddons(){
+ const p=products.find(x=>x.id===selectedAddonProductId);
+ $('addonTitle').textContent='إضافات: '+(p?.name||'المنتج');
+ const list=p?.addons||[];
+ $('addonList').innerHTML=list.length?list.map(a=>
+  '<div class="addon-owner-row"><div><strong>'+safe(a.name)+'</strong><small>'+fmt(a.price_fils)+' · أقصى عدد لكل كوب: '+a.max_qty+(a.enabled?' · متوفرة':' · مخفية')+'</small></div><div class="actions"><button type="button" class="button outline sm" data-edit-addon="'+a.id+'">تعديل</button><button type="button" class="button red sm" data-delete-addon="'+a.id+'">حذف</button></div></div>'
+ ).join(''):'<div class="empty">لا توجد إضافات لهذا المنتج بعد.</div>';
+ document.querySelectorAll('[data-edit-addon]').forEach(b=>b.onclick=()=>{
+  const a=list.find(a=>a.id===Number(b.dataset.editAddon));
+  if(!a)return;
+  $('addonId').value=a.id;$('addonName').value=a.name;
+  $('addonPrice').value=(a.price_fils/100).toFixed(2);
+  $('addonMaxQty').value=a.max_qty;$('addonEnabled').checked=!!a.enabled;
+  $('addonFormTitle').textContent='تعديل الإضافة';
+  errtxt('addonError','');
+  $('addonName').focus();
+ });
+ document.querySelectorAll('[data-delete-addon]').forEach(b=>b.onclick=async()=>{
+  const id=Number(b.dataset.deleteAddon);
+  if(!confirm('حذف هذه الإضافة من المنتج؟'))return;
+  b.disabled=true;
+  try{
+   await api('/api/owner/addons/'+id+'/delete','POST',{});
+   await loadAll();resetAddonEditor();renderOwnerAddons();
+  }catch(err){errtxt('addonError',err.message);b.disabled=false}
+ });
+}
+function openAddonModal(productId){
+ selectedAddonProductId=productId;
+ $('addonProductId').value=productId;
+ resetAddonEditor();renderOwnerAddons();
+ modal('addonModal',true);
+}
+$('resetAddon').onclick=resetAddonEditor;
+$('addonForm').onsubmit=async e=>{
+ e.preventDefault();
+ const b=$('saveAddon');b.disabled=true;errtxt('addonError','');
+ try{
+  await api('/api/owner/addons/save','POST',{
+   id:$('addonId').value?Number($('addonId').value):null,
+   product_id:$('addonProductId').value,
+   name:$('addonName').value.trim(),
+   price:Number($('addonPrice').value),
+   max_qty:Number($('addonMaxQty').value),
+   enabled:$('addonEnabled').checked
+  });
+  await loadAll();
+  resetAddonEditor();renderOwnerAddons();
+  errtxt('addonError','تم حفظ الإضافة',true);
+ }catch(err){errtxt('addonError',err.message)}
+ finally{b.disabled=false}
+};
 function promoModal(p){editPromo=p||null;$('promoTitle').textContent=p?'تعديل العرض':'إنشاء عرض';$('promoId').value=p?.id||'';$('promoName').value=p?.title||'';$('promoSubtitle').value=p?.subtitle||'';$('promoProduct').value=p?.product_id||products[0]?.id||'';$('promoDiscount').value=p?.discount_percent||0;$('promoMode').value=p?.mode||'weekly';$('promoStartTime').value=p?.start_time||'00:00';$('promoEndTime').value=p?.end_time||'23:59';$('promoStartAt').value=p?.start_at||'';$('promoEndAt').value=p?.end_at||'';$('promoEnabled').checked=p?!!p.enabled:true;let days=[];try{days=JSON.parse(p?.days||'[0]')}catch{}document.querySelectorAll('.dayCheck').forEach(x=>x.checked=days.includes(Number(x.value)));$('promoMode').onchange();errtxt('promoError','');modal('promoModal',true)}
 $('newPromo').onclick=()=>promoModal();$('promoMode').onchange=()=>{$('weeklyFields').classList.toggle('hidden',$('promoMode').value!=='weekly');$('onceFields').classList.toggle('hidden',$('promoMode').value!=='one_time')};
 $('promoForm').onsubmit=async e=>{e.preventDefault();$('savePromo').disabled=true;errtxt('promoError','');try{const mode=$('promoMode').value;const payload={id:$('promoId').value?Number($('promoId').value):null,title:$('promoName').value,subtitle:$('promoSubtitle').value,product_id:$('promoProduct').value,mode,discount_percent:Number($('promoDiscount').value),enabled:$('promoEnabled').checked,days:Array.from(document.querySelectorAll('.dayCheck:checked')).map(x=>Number(x.value)),start_time:$('promoStartTime').value,end_time:$('promoEndTime').value,start_at:$('promoStartAt').value,end_at:$('promoEndAt').value};await api('/api/owner/promo/save','POST',payload);modal('promoModal',false);await loadAll()}catch(err){errtxt('promoError',err.message)}finally{$('savePromo').disabled=false}};
