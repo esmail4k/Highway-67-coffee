@@ -18,4 +18,5 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m py_compile server.py durable_sqlite.py tests/test_invoice_workflow.py
       - run: node --check static/admin-common.js && node --check static/staff.js && node --check static/owner.js && node --check static/app.js
+      - run: node --check static/i18n.js && node tests/test_language.js
       - run: python -m unittest discover -s tests -v
