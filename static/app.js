@@ -240,8 +240,19 @@ document.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{selection=b.da
 function changeBanner(v){banner=(banner+v+3)%3;$('hero').classList.toggle('active-alt',banner>0);$('hero').querySelectorAll('.dots span').forEach((x,i)=>x.style.backgroundColor=i===banner?'#d6a352':'#fff')}
 $('prevBanner').onclick=()=>changeBanner(-1);$('nextBanner').onclick=()=>changeBanner(1);
 function remaining(iso){let sec=Math.max(0,Math.floor((Date.parse(iso)-Date.now())/1000));if(sec<=0)return 'انتهى العرض';let h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return (h>0?h+' ساعة و ':'')+m+' دقيقة و '+String(s).padStart(2,'0')+' ثانية'}
+function renderAcaiHero(){
+ const offer=promotions.find(p=>p.product_id==='acai_smoothie'&&Date.parse(p.expires_at)>Date.now());
+ const panel=$('acaiHero');
+ panel.hidden=!offer;
+ if(offer){
+  $('hero').classList.remove('active-alt');
+  const sec=Math.max(0,Math.floor((Date.parse(offer.expires_at)-Date.now())/1000));
+  $('acaiHeroTimer').textContent=[Math.floor(sec/3600),Math.floor(sec%3600/60),sec%60].map(n=>String(n).padStart(2,'0')).join(':');
+ }
+}
 function renderPromos(){
- const active=promotions.filter(p=>Date.parse(p.expires_at)>Date.now());
+ renderAcaiHero();
+ const active=promotions.filter(p=>Date.parse(p.expires_at)>Date.now()&&p.product_id!=='acai_smoothie');
  $('offers').hidden=!active.length;
  $('offers').innerHTML=active.map(p=>`<article class="promoCard"><img src="${esc('/assets/'+p.image)}" alt=""><div><strong><svg class="spark" viewBox="0 0 24 24"><path d="m12 2 2.4 6.7 7 2-7 2.5L12 20l-2.5-6.8-7-2.5 7-2z"/></svg>${esc(p.title)}</strong><p>${esc(p.subtitle||'عرض خاص لمدة محدودة')}</p><div class="timer" data-until="${esc(p.expires_at)}">باقي ${remaining(p.expires_at)}</div><button type="button" data-offer="${esc(p.product_id)}" class="promoCta">شاهد المنتج</button></div></article>`).join('');
  document.querySelectorAll('[data-offer]').forEach(b=>b.onclick=()=>{selection='all';document.querySelectorAll('[data-cat]').forEach(x=>x.classList.toggle('active',x.dataset.cat==='all'));search='';$('searchInput').value='';renderCards();const item=document.querySelector('[data-add="'+b.dataset.offer+'"]');if(item){item.closest('.product').scrollIntoView({behavior:'smooth',block:'center'});item.closest('.product').style.boxShadow='0 0 0 3px #c49b6c';setTimeout(()=>item.closest('.product')&&(item.closest('.product').style.boxShadow=''),2000)}});
@@ -253,5 +264,5 @@ async function load(){try{const r=await fetch('/api/products',{cache:'no-store'}
   products=fresh;promotions=result.promotions||[];
   if(oldProducts!==newProducts){renderCards();renderCart()}
   renderPromos();await refreshShift()}catch(err){$('sections').innerHTML='<p class="blank">تعذر تحميل المنتجات. حدّث الصفحة وحاول مرة ثانية.</p>'}}
-setInterval(()=>{document.querySelectorAll('[data-until]').forEach(x=>x.textContent='باقي '+remaining(x.dataset.until));if(promotions.some(p=>Date.parse(p.expires_at)<=Date.now())){promotions=promotions.filter(p=>Date.parse(p.expires_at)>Date.now());renderPromos()}},1000);
+setInterval(()=>{renderAcaiHero();document.querySelectorAll('[data-until]').forEach(x=>x.textContent='باقي '+remaining(x.dataset.until));if(promotions.some(p=>Date.parse(p.expires_at)<=Date.now())){promotions=promotions.filter(p=>Date.parse(p.expires_at)>Date.now());renderPromos()}},1000);
 setInterval(refreshShift,15000);setInterval(load,20000);load();
