@@ -206,7 +206,8 @@ def init():
         if not d.execute("SELECT 1 FROM promos WHERE product_id='acai_smoothie' AND mode='last_hour'").fetchone():
             d.execute("""INSERT INTO promos(title,subtitle,product_id,mode,days,start_time,end_time,discount_percent,enabled)
                          VALUES(?,?,?,?,?,?,?,?,1)""",
-                      ('خصم مميز ⭐ آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
+                      ('خصم مميز - آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
+        d.execute("UPDATE promos SET title='خصم مميز - آخر ساعة' WHERE product_id='acai_smoothie' AND mode='last_hour'")
         # Update the acai product photo without overwriting owner-set pricing or availability.
         d.execute("UPDATE products SET image='acai-smoothie.jpg' WHERE id='acai_smoothie'")
         # DSI begins as unavailable until the owner supplies a price.
@@ -305,14 +306,8 @@ def current_promo(p,now_local):
     try:
         if not p['enabled']:return None
         if p['mode']=='last_hour':
-            # Configure STORE_CLOSING_TIME in UAE local HH:MM (24-hour).
-            closing=os.environ.get('STORE_CLOSING_TIME','').strip()
-            if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',closing):
-                # Show the requested promotion immediately while closing time is not configured.
-                return now_local.replace(hour=23,minute=59,second=59,microsecond=0)
-            hour,minute=map(int,closing.split(':'))
-            end=now_local.replace(hour=hour,minute=minute,second=0,microsecond=0)
-            if hour==0 and minute==0:end+=timedelta(days=1)
+            # Fixed daily closing time: 11:00 PM UAE local time.
+            end=now_local.replace(hour=23,minute=0,second=0,microsecond=0)
             if end-timedelta(hours=1)<=now_local<end:return end
             return None
         if p['mode']=='one_time':
