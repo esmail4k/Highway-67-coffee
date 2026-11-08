@@ -1,0 +1,67 @@
+name: Build original acai product photo
+on:
+  push:
+    paths:
+      - '.github/workflows/acai-original-photo.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  product-photo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the actual customer's original photo
+        env:
+          CANVA_THUMB: 'https://media.canva.com/v2/image-resize/format:JPG/height:200/quality:75/uri:ifs%3A%2F%2FM%2Fd0cf2576-7528-4ccd-a8ae-22ac4081cbc7/watermark:F/width:112?csig=AAAAAAAAAAAAAAAAAAAAAPq-15aOBsmTenwnGvhVBYJweRTOhgpw2OC3DQxwDSxD&exp=1794179921&osig=AAAAAAAAAAAAAAAAAAAAAANEHu4SdciVg7y1ToOrwQjN1xxA0YYc58kryREgJrKm&signer=media-rpc&token=AAIAAU0AJGQwY2YyNTc2LTc1MjgtNGNjZC1hOGFlLTIyYWM0MDgxY2JjNwAAAAABob109GgCJ6T5AwKSkulGDh_4-_QEoK9r_lWBVJQgltLbeK5H6g&x-canva-quality=thumbnail'
+        run: |
+          python - <<'PY'
+          import os,urllib.request
+          u=os.environ['CANVA_THUMB']
+          variants=[u.replace('height:200','height:1536').replace('width:112','width:864'),u]
+          for url in variants:
+              try:
+                  with urllib.request.urlopen(url,timeout=20) as r:data=r.read()
+                  if len(data)>1000:
+                      open('/tmp/original-acai.jpg','wb').write(data)
+                      from PIL import Image
+                      im=Image.open('/tmp/original-acai.jpg')
+                      print('Original image dimensions:',im.size)
+                      if min(im.size)>400:break
+              except Exception as e:print('Trying next image resolution:',str(e)[:150])
+          PY
+      - name: Keep original cup pixels and make the background white
+        run: |
+          python -m pip install --quiet pillow opencv-python-headless numpy
+          python - <<'PY'
+          import cv2,numpy as np
+          from PIL import Image
+          im=Image.open('/tmp/original-acai.jpg').convert('RGB')
+          w,h=im.size
+          # Original photograph: cup at x~0.06-0.65, y~0.06-0.80; leave only its silhouette.
+          arr=np.array(im)
+          mask=np.zeros((h,w),np.uint8)
+          # Narrow straw, lid, cup, bottom (pixel coordinates scaled from 864x1536).
+          outline=[(180,95),(213,92),(310,505),(485,499),(552,520),(565,590),(516,650),(498,1130),(474,1185),(176,1180),(134,1110),(107,680),(56,654),(49,590),(66,546),(192,514)]
+          pts=np.array([[(int(x*w/864),int(y*h/1536)) for x,y in outline]],np.int32)
+          cv2.fillPoly(mask,pts,255)
+          # Feather only the edge, not the original photograph itself.
+          alpha=cv2.GaussianBlur(mask,(5,5),0.9).astype(float)/255
+          white=np.full_like(arr,255)
+          out=(arr*alpha[:,:,None]+white*(1-alpha[:,:,None])).astype('uint8')
+          # Crop to just the cup, then center on white.
+          ys,xs=np.where(mask>0)
+          crop=Image.fromarray(out).crop((max(0,xs.min()-5),max(0,ys.min()-5),min(w,xs.max()+6),min(h,ys.max()+6)))
+          canvas=Image.new('RGB',(600,750),'white')
+          crop.thumbnail((560,710),Image.Resampling.LANCZOS)
+          canvas.paste(crop,((600-crop.width)//2,(750-crop.height)//2))
+          canvas.save('static/assets/acai-original-white.jpg',quality=94,optimize=True)
+          PY
+      - name: Commit original photo
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add static/assets/acai-original-white.jpg
+          git commit -m 'Use original acai cup photo with white background' || exit 0
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin HEAD:"$GITHUB_REF_NAME"
