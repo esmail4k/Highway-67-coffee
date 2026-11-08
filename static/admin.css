@@ -53,3 +53,44 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 
 /* Invoice editing and owner audit trail */
 .bill-item-controls{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;margin-top:9px}.bill-item-controls button{border:1px solid #d9c9b0;background:#fff9f0;border-radius:8px;min-width:29px;min-height:28px;cursor:pointer;font-weight:800}.bill-item-controls .remove-line{color:#a33c32;border-color:#e6c2b9;padding:4px 8px;font-size:11px}.deleted-bill{opacity:.65;border:1px dashed #a85247}.activity-list{display:grid;gap:10px;margin:12px 0 22px}.activity-record{background:#fffcf7;border:1px solid #ebddca;padding:12px 15px;border-radius:12px}.activity-record p{margin:7px 0;font-size:12px;color:#624f3b;line-height:1.6}.activity-record small{font-size:11px;color:#776954}
+
+/* Staff invoice product picker */
+.bill .actions .add-to-invoice{background:#79522d;color:#fff;font-size:12px;padding:10px 14px;box-shadow:0 3px 8px #231b1517}
+.add-item-modal{max-width:660px}
+.add-item-modal .hint{margin:0 0 14px;line-height:1.6}
+.picker-label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}
+#addItemSearch{width:100%;height:44px;border:1px solid #d4c5b5;border-radius:10px;padding:10px 13px;margin-bottom:12px;background:white}
+.invoice-product-grid{max-height:320px;overflow:auto;display:grid;gap:8px;padding:2px}
+.invoice-product-choice{width:100%;min-height:76px;display:flex;align-items:center;gap:13px;text-align:right;background:#fff;border:1px solid #e8ded4;border-radius:12px;padding:9px 12px;transition:background .15s,border-color .15s}
+.invoice-product-choice:hover{border-color:#a57a4c;background:#fffaf3}
+.invoice-product-choice.selected{border:2px solid #9b6c37;background:#fff6eb}
+.invoice-product-choice img{width:60px;height:60px;object-fit:contain;flex:0 0 auto;border-radius:8px;background:#fff}
+.invoice-product-choice span:nth-child(2){display:grid;gap:6px;min-width:0;flex:1}
+.invoice-product-choice strong{font-size:13px}
+.invoice-product-choice small{font-size:11px;color:#8e8074}
+.invoice-product-price{font-size:14px;font-weight:900;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.invoice-product-price del{font-size:11px;color:#8a8077;font-weight:400}
+.add-item-selection{margin:15px 0 10px;border-radius:9px;background:#f5f0e8;padding:10px 12px;font-weight:800;min-height:40px}
+.add-item-qty-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.add-item-qty-row label{font-weight:800}
+.add-item-qty-row input{width:90px;min-height:42px;border:1px solid #d4c5b5;border-radius:9px;text-align:center}
+.add-item-subtotal{font-weight:900;font-size:16px;color:#79522d}
+#addItemError{min-height:16px;margin-top:8px}
+@media(max-width:520px){.add-item-modal{padding:16px}.invoice-product-choice{gap:8px}.invoice-product-choice img{width:52px;height:52px}.invoice-product-price{font-size:12px}.bill .actions .add-to-invoice{width:100%}}
+
+/* Owner-controlled product extras */
+.addon-owner-list{display:grid;gap:9px;margin:15px 0}
+.addon-owner-row{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #e6dcd0;border-radius:12px;padding:13px;background:#fffcf8;flex-wrap:wrap}
+.addon-owner-row strong{display:block;margin-bottom:6px}
+.addon-owner-row small{color:#75695d;font-size:12px}
+#addonForm{border-top:1px solid #e6dcd0;margin-top:17px;padding-top:15px}
+#addonForm h3{margin-top:0;font-size:16px}
+#addonForm .hint{line-height:1.6}
+.invoice-addon-options{background:#fff9f2;border:1px solid #e7d8c9;border-radius:12px;padding:12px;margin:13px 0}
+.invoice-addon-options>strong{display:block;margin-bottom:9px}
+.invoice-addon-choice{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #ecdfd0}
+.invoice-addon-choice:last-child{border-bottom:0}
+.invoice-addon-choice span{font-weight:800}
+.invoice-addon-choice small{color:#837166;font-size:12px;font-weight:400;margin-right:9px}
+.invoice-addon-choice input[type=number]{max-width:75px;padding:8px;text-align:center;border:1px solid #d6c6b5;border-radius:8px}
+.invoice-addon-choice input[type=checkbox]{width:21px;height:21px;accent-color:#936a43}

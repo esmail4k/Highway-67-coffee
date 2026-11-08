@@ -112,6 +112,15 @@ def init():
         CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,
           price_fils INTEGER NOT NULL CHECK(price_fils>=0),image TEXT NOT NULL,available INTEGER NOT NULL DEFAULT 1,
           discount_percent INTEGER NOT NULL DEFAULT 0,promo_only INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS uploaded_images (
+          filename TEXT PRIMARY KEY, content BLOB NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS product_addons (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          name TEXT NOT NULL, price_fils INTEGER NOT NULL CHECK(price_fils>=0),
+          max_qty INTEGER NOT NULL DEFAULT 1 CHECK(max_qty BETWEEN 1 AND 10),
+          enabled INTEGER NOT NULL DEFAULT 1);
+        CREATE INDEX IF NOT EXISTS addons_by_product ON product_addons(product_id,id);
         CREATE TABLE IF NOT EXISTS shifts (id INTEGER PRIMARY KEY AUTOINCREMENT,local_date TEXT NOT NULL,
           started_at TEXT NOT NULL,ended_at TEXT,label TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',
           hidden_for_staff INTEGER NOT NULL DEFAULT 0);
@@ -143,6 +152,7 @@ def init():
         add_column(d,'order_items','syrup','TEXT NOT NULL DEFAULT \'\'')
         add_column(d,'order_items','syrup_qty','INTEGER NOT NULL DEFAULT 0')
         add_column(d,'order_items','item_note',"TEXT NOT NULL DEFAULT ''")
+        add_column(d,'order_items','addon_details',"TEXT NOT NULL DEFAULT '[]'")
         add_column(d,'orders','cancel_reason',"TEXT NOT NULL DEFAULT ''")
         add_column(d,'orders','deleted_at','TEXT')
         add_column(d,'orders','deleted_by',"TEXT NOT NULL DEFAULT ''")
@@ -208,8 +218,17 @@ def init():
                          VALUES(?,?,?,?,?,?,?,?,1)""",
                       ('خصم مميز - آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
         d.execute("UPDATE promos SET title='خصم مميز - آخر ساعة' WHERE product_id='acai_smoothie' AND mode='last_hour'")
-        # Update the acai product photo without overwriting owner-set pricing or availability.
-        d.execute("UPDATE products SET image='acai-original-white.jpg' WHERE id='acai_smoothie'")
+        # The initial photo replacement runs once, then all owner photo edits are preserved.
+        acai_image_key='acai_original_photo_one_time_2026_11_08'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(acai_image_key,)).fetchone():
+            d.execute("UPDATE products SET image='acai-original-white.jpg' WHERE id='acai_smoothie' AND image IN ('iced.webp','acai-smoothie.svg','acai-smoothie.jpg')")
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(acai_image_key,))
+        # Owner can freely edit or remove this default acai extra after its first creation.
+        if not d.execute("SELECT 1 FROM site_migrations WHERE key='acai_peanuts_addon_2026_11_08'").fetchone():
+            if not d.execute("SELECT 1 FROM product_addons WHERE product_id='acai_smoothie' AND name='إكسترا بينات'").fetchone():
+                d.execute('INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,1)',
+                          ('acai_smoothie','إكسترا بينات',200,1))
+            d.execute("INSERT INTO site_migrations(key) VALUES('acai_peanuts_addon_2026_11_08')")
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
@@ -251,7 +270,11 @@ def list_orders(d,shift_id,include_deleted=False):
         ids=[o['id'] for o in orders]
         holder=','.join('?'*len(ids))
         items=defaultdict(list)
-        for x in d.execute(f'SELECT * FROM order_items WHERE order_id IN ({holder})',ids):items[x['order_id']].append(dict(x))
+        for x in d.execute(f'SELECT * FROM order_items WHERE order_id IN ({holder})',ids):
+            item=dict(x)
+            try:item['addons']=json.loads(item.get('addon_details') or '[]')
+            except (ValueError,TypeError):item['addons']=[]
+            items[x['order_id']].append(item)
         for o in orders:o['items']=items[o['id']]
     return orders
 
@@ -331,11 +354,16 @@ def catalog(d):
             p['expires_at']=expiry.astimezone(timezone.utc).isoformat(timespec='seconds')
             active.append(p)
             linked[p['product_id']]=max(linked.get(p['product_id'],0),p['discount_percent'])
+    addons=defaultdict(list)
+    for a in d.execute('SELECT id,product_id,name,price_fils,max_qty FROM product_addons WHERE enabled=1 ORDER BY id'):
+        a=dict(a)
+        addons[a['product_id']].append(a)
     shown=[]
     active_ids={p['product_id'] for p in active}
     for p in products:
         if p['promo_only'] and p['id'] not in active_ids:continue
         if p['id']=='piccolo':continue
+        p['addons']=addons.get(p['id'],[])
         p['effective_discount']=max(p['discount_percent'],linked.get(p['id'],0))
         p['final_price_fils']=(p['price_fils']*(100-p['effective_discount'])+50)//100
         shown.append(p)
@@ -345,6 +373,26 @@ def catalog(d):
         product=next((a for a in shown if a['id']==p['product_id']),None)
         if product and product['available']:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':('acai-promo.jpg' if p['product_id']=='acai_smoothie' else product['image'])})
     return shown,public_promos
+
+def priced_addons(product,requested):
+    """Validate owner-defined extras and snapshot their names/prices at checkout."""
+    if not isinstance(requested,list) or len(requested)>15:
+        raise ValueError('بيانات الإضافات غير صحيحة')
+    allowed={a['id']:a for a in product.get('addons',[])}
+    details=[];seen=set();extra_total=0
+    for item in requested:
+        if not isinstance(item,dict):
+            raise ValueError('بيانات الإضافة غير صحيحة')
+        aid=item.get('id');qty=item.get('qty')
+        if type(aid)!=int or type(qty)!=int or aid in seen:
+            raise ValueError('الإضافة مكررة أو غير صحيحة')
+        addon=allowed.get(aid)
+        if not addon or not 1<=qty<=addon['max_qty']:
+            raise ValueError('الإضافة غير متوفرة أو عددها أكبر من المسموح')
+        seen.add(aid)
+        extra_total+=qty*addon['price_fils']
+        details.append({'id':aid,'name':addon['name'],'qty':qty,'price_fils':addon['price_fils']})
+    return details,extra_total
 
 def fils(value):
     if isinstance(value,bool) or not isinstance(value,(int,float,str)):return None
@@ -564,7 +612,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.sendj(200,{'feedback':feedback})
         if path=='/api/owner/products':
             if not self.auth('owner'):return
-            with con() as d:result=[dict(p) for p in d.execute("SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid")]
+            with con() as d:
+                result=[dict(p) for p in d.execute("SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid")]
+                all_addons=defaultdict(list)
+                for a in d.execute('SELECT id,product_id,name,price_fils,max_qty,enabled FROM product_addons ORDER BY id'):
+                    all_addons[a['product_id']].append(dict(a))
+                for p in result:p['addons']=all_addons.get(p['id'],[])
             return self.sendj(200,{'products':result})
         if path=='/api/owner/staff/accounts':
             if not self.auth('owner'):return
@@ -591,6 +644,17 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/assets/uploads/'):
             filename=path.removeprefix('/assets/uploads/')
             if not re.fullmatch(r'[0-9a-f]{24}\.webp',filename):return self.sendj(404,{'error':'غير موجود'})
+            # Uploaded photos are durable in the SQLite/Postgres snapshot, not Render's ephemeral disk.
+            with con() as d:
+                stored=d.execute('SELECT content FROM uploaded_images WHERE filename=?',('uploads/'+filename,)).fetchone()
+            if stored:
+                buf=bytes(stored['content'])
+                self.send_response(200)
+                self.send_header('Content-Type','image/webp')
+                self.send_header('Content-Length',str(len(buf)))
+                self.common();self.end_headers();self.wfile.write(buf)
+                return
+            # Backward compatibility for any uploads made before this migration.
             file=(DATA/'uploads'/filename).resolve()
             if not file.is_relative_to((DATA/'uploads').resolve()):return self.sendj(404,{'error':'غير موجود'})
         else:
@@ -763,15 +827,17 @@ class Handler(BaseHTTPRequestHandler):
                         return self.sendj(400,{'error':'هذه الإضافة غير متاحة لهذا المشروب'})
                     if not isinstance(item_note,str) or len(item_note.strip())>160:
                         return self.sendj(400,{'error':'ملاحظة المنتج طويلة أو غير صحيحة'})
-                    unit_price=p['final_price_fils']+(100 if syrup=='caramel' else 0)
-                    lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price))
+                    try:addon_details,addon_total=priced_addons(p,x.get('addons',[]))
+                    except ValueError as e:return self.sendj(400,{'error':str(e)})
+                    unit_price=p['final_price_fils']+(100 if syrup=='caramel' else 0)+addon_total
+                    lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price,addon_details))
                     total+=unit_price*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
                 cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
                 oid=cursor.lastrowid
-                for p,qty,syrup,syrup_qty,item_note,unit_price in lines:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                              (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note))
+                for p,qty,syrup,syrup_qty,item_note,unit_price,addon_details in lines:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note,addon_details) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                              (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note,json.dumps(addon_details,ensure_ascii=False)))
                 feedback_token=secrets.token_urlsafe(24)
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
@@ -860,16 +926,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not order or order['deleted_at']:return self.sendj(404,{'error':'الفاتورة غير موجودة'})
                 if order['ended_at'] or order['status'] not in ('new','ready'):
                     return self.sendj(409,{'error':'لا يمكن تعديل الفاتورة بعد التسليم أو إغلاق الوردية'})
-                product=d.execute('SELECT * FROM products WHERE id=?',(pid,)).fetchone()
+                # Match the live customer menu: availability, promo-only visibility,
+                # and the currently active discounted price.
+                menu_products,_=catalog(d)
+                product=next((p for p in menu_products if p['id']==pid),None)
                 if not product or not product['available'] or product['price_fils']<=0:
                     return self.sendj(409,{'error':'المنتج غير متوفر'})
-                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid)).fetchone()
+                try:addon_details,addon_total=priced_addons(product,data.get('addons',[]))
+                except ValueError as e:return self.sendj(400,{'error':str(e)})
+                addon_json=json.dumps(addon_details,ensure_ascii=False)
+                unit_price=product['final_price_fils']+addon_total
+                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND price_fils=? AND addon_details=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid,unit_price,addon_json)).fetchone()
                 if existing:
                     if existing['qty']+qty>30:return self.sendj(400,{'error':'الكمية تتجاوز 30'})
                     d.execute('UPDATE order_items SET qty=qty+? WHERE id=?',(qty,existing['id']))
                 else:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                              (oid,pid,product['name'],product['image'],qty,product['price_fils'],product['price_fils'],'',0,''))
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note,addon_details) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                              (oid,pid,product['name'],product['image'],qty,unit_price,product['price_fils'],'',0,'',addon_json))
                 total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
                 if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
                 d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
@@ -996,6 +1069,48 @@ class Handler(BaseHTTPRequestHandler):
                 record_log(d,'المدير','order_deleted',oid,'حذف الفاتورة من لوحة المدير')
                 d.commit()
             return self.sendj(200,{'ok':True,'deleted_order_id':oid})
+        if path=='/api/owner/addons/save':
+            if not self.auth('owner'):return
+            try:
+                addon_id=data.get('id')
+                pid=data.get('product_id')
+                name=textfield(data,'name',70,True)
+                price=fils(data.get('price'))
+                max_qty=data.get('max_qty',1)
+                enabled=data.get('enabled',True)
+                if addon_id is not None and (type(addon_id)!=int or addon_id<=0):
+                    raise ValueError('معرف الإضافة غير صحيح')
+                if not isinstance(pid,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{2,70}',pid):
+                    raise ValueError('المنتج غير صحيح')
+                if price is None or price>100000 or type(max_qty)!=int or not 1<=max_qty<=10 or type(enabled)!=bool:
+                    raise ValueError('تأكد من السعر وعدد مرات الإضافة')
+            except ValueError as e:return self.sendj(400,{'error':str(e)})
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                if not d.execute('SELECT 1 FROM products WHERE id=? AND id!=?',(pid,'piccolo')).fetchone():
+                    return self.sendj(404,{'error':'المنتج غير موجود'})
+                if addon_id is None:
+                    addon_id=d.execute('INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,?)',
+                        (pid,name,price,max_qty,int(enabled))).lastrowid
+                else:
+                    changed=d.execute('UPDATE product_addons SET name=?,price_fils=?,max_qty=?,enabled=? WHERE id=? AND product_id=?',
+                        (name,price,max_qty,int(enabled),addon_id,pid))
+                    if not changed.rowcount:return self.sendj(404,{'error':'الإضافة غير موجودة'})
+                record_log(d,'المدير','addon_saved',None,f'المنتج {pid}، الإضافة {name}، السعر {price/100:.2f}، العدد {max_qty}')
+                d.commit()
+            return self.sendj(200,{'ok':True,'id':addon_id})
+        match=re.fullmatch(r'/api/owner/addons/(\d+)/delete',path)
+        if match:
+            if not self.auth('owner'):return
+            addon_id=int(match.group(1))
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                addon=d.execute('SELECT * FROM product_addons WHERE id=?',(addon_id,)).fetchone()
+                if not addon:return self.sendj(404,{'error':'الإضافة غير موجودة'})
+                d.execute('DELETE FROM product_addons WHERE id=?',(addon_id,))
+                record_log(d,'المدير','addon_deleted',None,f"حذف إضافة {addon['name']} من {addon['product_id']}")
+                d.commit()
+            return self.sendj(200,{'ok':True})
         if path=='/api/owner/product/save':
             if not self.auth('owner'):return
             try:
@@ -1037,8 +1152,9 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('BEGIN IMMEDIATE')
                 old=d.execute('SELECT image FROM products WHERE id=?',(pid,)).fetchone()
                 if old is None:return self.sendj(404,{'error':'المنتج غير موجود'})
-                fname='uploads/'+secrets.token_hex(12)+'.webp';(DATA/'uploads').mkdir(exist_ok=True)
-                (DATA/fname).write_bytes(out.getvalue())
+                fname='uploads/'+secrets.token_hex(12)+'.webp'
+                d.execute('INSERT INTO uploaded_images(filename,content,created_at) VALUES(?,?,?)',
+                          (fname,out.getvalue(),utcnow()))
                 d.execute('UPDATE products SET image=? WHERE id=?',(fname,pid));d.commit()
             return self.sendj(200,{'ok':True,'image':fname})
         if path=='/api/owner/promo/save':

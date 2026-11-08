@@ -42,63 +42,153 @@ function render(){if(!data)return;const s=data.shift;
 async function bindStaffInvoiceControls(){
  document.querySelectorAll('[data-qty-change]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.qtyChange),item=Number(b.dataset.item),next=Number(b.dataset.qty)+Number(b.dataset.delta);
-  if(next<1){alert('لحذف المنتج بالكامل استخدم زر حذف المنتج');return}
+  if(next<1){uiAlert('لحذف المنتج بالكامل استخدم زر حذف المنتج');return}
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/quantity','POST',{qty:next});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
  document.querySelectorAll('[data-remove-item]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.removeItem),item=Number(b.dataset.item);
-  if(!confirm('حذف هذا المنتج من الفاتورة؟'))return;
+  if(!uiConfirm('حذف هذا المنتج من الفاتورة؟'))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/remove','POST',{});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
- document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=async()=>{
-  const id=Number(b.dataset.addItem);
-  try{
-   const menu=await api('/api/products');
-   const available=(menu.products||[]).filter(p=>p.available&&p.price_fils>0);
-   if(!available.length){alert('ما فيه منتجات متوفرة حالياً');return}
-   const choices=available.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.price_fils)).join('\\n');
-   const selection=prompt('اختر رقم المنتج لإضافته إلى الفاتورة #'+id+'\\n'+choices);
-   if(selection===null)return;
-   const index=Number(selection);
-   if(!Number.isInteger(index)||index<1||index>available.length){alert('اختيار غير صحيح');return}
-   const qtyText=prompt('كم حبة تبا تضيف؟ (1 إلى 30)','1');
-   if(qtyText===null)return;
-   const qty=Number(qtyText);
-   if(!Number.isInteger(qty)||qty<1||qty>30){alert('الكمية غير صحيحة');return}
-   b.disabled=true;
-   await api('/api/staff/orders/'+id+'/items/add','POST',{product_id:available[index-1].id,qty});
-   await refresh();
-  }catch(e){alert(e.message)}finally{b.disabled=false}
- });
+ document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=()=>openInvoiceProductPicker(Number(b.dataset.addItem)));
  document.querySelectorAll('[data-delete-staff-order]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteStaffOrder);
-  if(!confirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
+  if(!uiConfirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/delete','POST',{confirmation:'DELETE '+id});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
 }
-async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
+
+let invoiceItemOrderId=null,invoiceProductChoices=[],invoiceSelectedProduct=null,invoiceAddBusy=false;
+function closeInvoiceProductPicker(){
+ if(invoiceAddBusy)return;
+ $('addItemModal').classList.remove('show');
+ invoiceItemOrderId=null;
+ invoiceSelectedProduct=null;
+ invoiceProductChoices=[];
+}
+function chosenInvoiceAddons(){
+ return Array.from(document.querySelectorAll('#invoiceAddonOptions [data-invoice-addon]')).map(input=>({
+  id:Number(input.dataset.invoiceAddon),
+  qty:input.type==='checkbox'?(input.checked?1:0):Number(input.value)
+ })).filter(x=>x.qty>0);
+}
+function renderInvoiceAddonOptions(){
+ const extras=invoiceSelectedProduct?.addons||[];
+ const area=$('invoiceAddonOptions');
+ area.hidden=!extras.length;
+ area.innerHTML=extras.length?'<strong>إضافات المنتج</strong>'+extras.map(a=>
+  '<label class="invoice-addon-choice"><span>'+safe(a.name)+' <small>+'+fmt(a.price_fils)+'</small></span>'
+  +(a.max_qty===1?'<input type="checkbox" data-invoice-addon="'+a.id+'">':'<input type="number" data-invoice-addon="'+a.id+'" min="0" max="'+a.max_qty+'" value="0" step="1">')
+  +'</label>'
+ ).join(''):'';
+ area.querySelectorAll('input').forEach(input=>{
+  input.addEventListener('change',updateInvoiceProductSubtotal);
+  input.addEventListener('input',updateInvoiceProductSubtotal);
+ });
+}
+function updateInvoiceProductSubtotal(){
+ const selected=invoiceSelectedProduct;
+ const qty=Number($('addItemQuantity').value);
+ const chosen=chosenInvoiceAddons();
+ const validAddons=chosen.every(x=>{
+  const addon=(selected?.addons||[]).find(a=>a.id===x.id);
+  return addon&&Number.isInteger(x.qty)&&x.qty<=addon.max_qty;
+ });
+ const valid=selected&&Number.isInteger(qty)&&qty>=1&&qty<=30&&validAddons;
+ const extrasTotal=chosen.reduce((total,x)=>{
+  const addon=(selected?.addons||[]).find(a=>a.id===x.id);
+  return total+(addon?addon.price_fils*x.qty:0);
+ },0);
+ $('addItemSubtotal').textContent=valid?'الإضافة: '+fmt(qty*(Number(selected.final_price_fils??selected.price_fils)+extrasTotal)):'';
+ $('saveAddItem').disabled=!valid||invoiceAddBusy;
+}
+function pickInvoiceProduct(id){
+ invoiceSelectedProduct=invoiceProductChoices.find(p=>p.id===id)||null;
+ $('addItemSelection').textContent=invoiceSelectedProduct?invoiceSelectedProduct.name+' — '+fmt(invoiceSelectedProduct.final_price_fils??invoiceSelectedProduct.price_fils):'اختر المنتج من القائمة';
+ document.querySelectorAll('[data-invoice-product]').forEach(b=>{
+  const chosen=b.dataset.invoiceProduct===id;
+  b.classList.toggle('selected',chosen);
+  b.setAttribute('aria-pressed',String(chosen));
+ });
+ renderInvoiceAddonOptions();
+ updateInvoiceProductSubtotal();
+}
+function renderInvoiceProductChoices(){
+ const q=$('addItemSearch').value.trim().toLocaleLowerCase();
+ const shown=invoiceProductChoices.filter(p=>p.name.toLocaleLowerCase().includes(q)||p.category.toLocaleLowerCase().includes(q));
+ $('addItemProducts').innerHTML=shown.length?shown.map(p=>{
+  const price=Number(p.final_price_fils??p.price_fils);
+  const discounted=price<Number(p.price_fils);
+  return '<button type="button" class="invoice-product-choice'+(invoiceSelectedProduct?.id===p.id?' selected':'')+'" data-invoice-product="'+safe(p.id)+'" aria-pressed="'+String(invoiceSelectedProduct?.id===p.id)+'"><img src="'+safe(asset(p.image))+'" alt="" loading="lazy"><span><strong>'+safe(p.name)+'</strong><small>'+safe(p.category)+'</small></span><span class="invoice-product-price">'+(discounted?'<del>'+fmt(p.price_fils)+'</del>':'')+fmt(price)+'</span></button>';
+ }).join(''):'<div class="empty">ما لقينا منتج متوفر بهذا الاسم.</div>';
+}
+async function openInvoiceProductPicker(id){
+ if(invoiceAddBusy)return;
+ invoiceItemOrderId=id;invoiceSelectedProduct=null;invoiceProductChoices=[];
+ $('addItemInvoiceNumber').textContent='#'+id;
+ $('addItemSearch').value='';$('addItemQuantity').value='1';
+ $('addItemError').textContent='';$('addItemSelection').textContent='اختر المنتج من القائمة';
+ $('addItemProducts').innerHTML='<div class="empty">جاري تحميل المنتجات...</div>';
+ $('invoiceAddonOptions').innerHTML='';$('invoiceAddonOptions').hidden=true;
+ $('saveAddItem').disabled=true;$('addItemSubtotal').textContent='';
+ $('addItemModal').classList.add('show');
+ $('addItemSearch').focus();
+ try{
+  const menu=await api('/api/products');
+  if(invoiceItemOrderId!==id)return;
+  invoiceProductChoices=(menu.products||[]).filter(p=>p.available&&Number(p.price_fils)>0&&Number(p.final_price_fils??p.price_fils)>=0);
+  renderInvoiceProductChoices();
+  if(!invoiceProductChoices.length)$('addItemError').textContent='ما في منتجات متوفرة حالياً.';
+ }catch(e){$('addItemError').textContent=e.message;$('addItemProducts').innerHTML=''}
+}
+$('addItemSearch').oninput=renderInvoiceProductChoices;
+$('addItemProducts').onclick=e=>{
+ const choice=e.target.closest('[data-invoice-product]');
+ if(choice)pickInvoiceProduct(choice.dataset.invoiceProduct);
+};
+$('addItemQuantity').oninput=updateInvoiceProductSubtotal;
+$('closeAddItemModal').onclick=closeInvoiceProductPicker;
+$('cancelAddItem').onclick=closeInvoiceProductPicker;
+$('addItemModal').onclick=e=>{if(e.target===$('addItemModal'))closeInvoiceProductPicker()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('addItemModal').classList.contains('show'))closeInvoiceProductPicker()});
+$('addItemForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(invoiceAddBusy||!invoiceSelectedProduct||!invoiceItemOrderId)return;
+ const qty=Number($('addItemQuantity').value);
+ if(!Number.isInteger(qty)||qty<1||qty>30){$('addItemError').textContent='اختر كمية من 1 إلى 30';return}
+ invoiceAddBusy=true;$('addItemError').textContent='';$('saveAddItem').disabled=true;
+ try{
+  const addons=chosenInvoiceAddons();
+  if(addons.some(x=>{const a=(invoiceSelectedProduct.addons||[]).find(a=>a.id===x.id);return !a||!Number.isInteger(x.qty)||x.qty>a.max_qty}))throw Error('عدد الإضافات غير صحيح');
+  await api('/api/staff/orders/'+invoiceItemOrderId+'/items/add','POST',{product_id:invoiceSelectedProduct.id,qty,addons});
+  invoiceAddBusy=false;
+  closeInvoiceProductPicker();
+  await refresh();
+ }catch(err){invoiceAddBusy=false;$('addItemError').textContent=err.message;updateInvoiceProductSubtotal()}
+};
+async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){uiAlert(e.message)}}
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
-$('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
+$('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){uiAlert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  await api('/api/staff/shift/end','POST',{});
  showLive();data=null;await refresh();
- }catch(e){$('refreshLabel').textContent=e.message;window.alert(e.message)}finally{b.disabled=false}};
+ }catch(e){$('refreshLabel').textContent=e.message;uiAlert(e.message)}finally{b.disabled=false}};
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');$('stockPage').classList.toggle('hidden',selectedPage!=='stock');if(selectedPage==='reviews')loadFeedback();if(selectedPage==='stock')loadStock();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
-async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){alert(e.message)}}
+async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){uiAlert(e.message)}}
 document.querySelectorAll('[data-mtab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-mtab]').forEach(x=>x.classList.toggle('active',x===b));$('modalOrders').classList.toggle('hidden',b.dataset.mtab!=='orders');$('modalEdit').classList.toggle('hidden',b.dataset.mtab!=='edit')});
 $('modalEdit').onsubmit=async e=>{e.preventDefault();if(!loadedShift)return;try{await api(`/api/staff/shifts/${loadedShift.shift.id}/edit`,'POST',{label:$('shiftLabel').value,notes:$('shiftNotes').value});modal(false);await refresh()}catch(e){$('modalError').textContent=e.message}};
 async function hideShift(id,b){
  b=b||$('hideShift');
  if(b.dataset.confirmHide!=='yes'){b.dataset.confirmHide='yes';b.textContent='تأكيد الإخفاء';return}
- try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){alert(e.message)}
+ try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){uiAlert(e.message)}
 };
 $('hideShift').onclick=()=>{if(loadedShift)hideShift(loadedShift.shift.id,$('hideShift'))};
 setInterval(()=>refresh(),5000);setInterval(refreshOrderStatus,30000);boot();

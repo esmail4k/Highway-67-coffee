@@ -164,4 +164,187 @@ class InvoiceWorkflowTest(unittest.TestCase):
         code,activity=self.request(self.owner,'GET','/api/owner/activity')
         self.assertTrue(any(x['action']=='order_restored' for x in activity['logs']))
 
+
+    def test_owner_can_create_product_and_staff_add_to_invoice(self):
+        # The test database is temporary and never writes to the live cafe.
+        code,owner_login=self.request(self.owner,'POST','/api/owner/login',
+            {'username':'esmail','password':'test-owner-strong-password'})
+        self.assertEqual(code,200,owner_login)
+        code,staff_login=self.request(self.staff,'POST','/api/staff/login',
+            {'username':'test-staff','password':'test-staff-strong-password'})
+        self.assertEqual(code,200,staff_login)
+
+        code,created=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':None,'name':'مشروب اختبار جديد','category':'Cold Drinks',
+            'price':14.75,'discount_percent':20,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200,created)
+        pid=created['id']
+        self.assertTrue(pid.startswith('custom-'))
+
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        product=next(p for p in menu['products'] if p['id']==pid)
+        self.assertEqual(product['name'],'مشروب اختبار جديد')
+        self.assertEqual(product['price_fils'],1475)
+        self.assertEqual(product['final_price_fils'],1180)
+
+        code,order=self.request(self.customer,'POST','/api/orders',{
+            'customer_name':'Test Customer','phone':'0501234567',
+            'car_plate':'345 ABC','notes':'',
+            'items':[{'id':'cap','qty':1}]
+        })
+        self.assertEqual(code,201,order)
+        oid=order['id']
+        self.assertEqual(order['total_fils'],1350)
+
+        code,added=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':2})
+        self.assertEqual(code,200,added)
+        self.assertEqual(added['total_fils'],3710)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_item=next(p for p in current['items'] if p['product_id']==pid)
+        self.assertEqual(added_item['qty'],2)
+        self.assertEqual(added_item['price_fils'],1180)
+        self.assertEqual(added_item['original_fils'],1475)
+
+        code,again=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':1})
+        self.assertEqual(code,200,again)
+        self.assertEqual(again['total_fils'],4890)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_items=[p for p in current['items'] if p['product_id']==pid]
+        self.assertEqual(len(added_items),1)
+        self.assertEqual(added_items[0]['qty'],3)
+
+        # Changing a product does not modify a previously billed unit price.
+        code,_=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':pid,'name':'مشروب اختبار جديد','category':'Cold Drinks',
+            'price':16,'discount_percent':0,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200)
+        code,again=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':pid,'qty':1})
+        self.assertEqual(code,200,again)
+        self.assertEqual(again['total_fils'],6490)
+        code,summary=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in summary['orders'] if o['id']==oid)
+        added_items=sorted((p for p in current['items'] if p['product_id']==pid),key=lambda p:p['price_fils'])
+        self.assertEqual(len(added_items),2)
+        self.assertEqual([p['price_fils'] for p in added_items],[1180,1600])
+
+
+    def test_z_owner_manages_extras_and_checkout_snapshots_prices(self):
+        code,r=self.request(self.owner,'POST','/api/owner/login',
+            {'username':'esmail','password':'test-owner-strong-password'})
+        self.assertEqual(code,200,r)
+        self.assertNotIn('requires_verification',r)
+        code,r=self.request(self.staff,'POST','/api/staff/login',
+            {'username':'test-staff','password':'test-staff-strong-password'})
+        self.assertEqual(code,200,r)
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        acai=next(p for p in menu['products'] if p['id']=='acai_smoothie')
+        peanuts=next(a for a in acai['addons'] if a['name']=='إكسترا بينات')
+        self.assertEqual(peanuts['price_fils'],200)
+        self.assertEqual(peanuts['max_qty'],1)
+        code,owned=self.request(self.owner,'GET','/api/owner/products')
+        self.assertEqual(code,200,owned)
+        self.assertTrue(next(p for p in owned['products'] if p['id']=='acai_smoothie')['addons'])
+
+        code,r=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':None,'name':'تجربة الإضافات','category':'Cold Drinks',
+            'price':10,'discount_percent':0,'available':True,'promo_only':False})
+        self.assertEqual(code,200,r)
+        pid=r['id']
+        code,r=self.request(self.owner,'POST','/api/owner/addons/save',{
+            'id':None,'product_id':pid,'name':'زيادة فول سوداني',
+            'price':2,'max_qty':1,'enabled':True})
+        self.assertEqual(code,200,r)
+        aid=r['id']
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        p=next(p for p in menu['products'] if p['id']==pid)
+        self.assertEqual(p['addons'][0]['price_fils'],200)
+        self.assertEqual(p['addons'][0]['max_qty'],1)
+        bad_order={
+            'customer_name':'Addons Customer','phone':'0501234567','car_plate':'777 HCT',
+            'notes':'','items':[{'id':pid,'qty':2,'addons':[{'id':aid,'qty':2}]}]}
+        code,r=self.request(self.customer,'POST','/api/orders',bad_order)
+        self.assertEqual(code,400,r)
+        bad_order['items'][0]['addons'][0]['qty']=1
+        code,r=self.request(self.customer,'POST','/api/orders',bad_order)
+        self.assertEqual(code,201,r)
+        oid=r['id']
+        self.assertEqual(r['total_fils'],2400)
+        code,overview=self.request(self.staff,'GET','/api/staff/overview')
+        item=next(o for o in overview['orders'] if o['id']==oid)['items'][0]
+        self.assertEqual(item['price_fils'],1200)
+        self.assertEqual(item['addons'][0]['name'],'زيادة فول سوداني')
+        self.assertEqual(item['addons'][0]['price_fils'],200)
+
+        code,r=self.request(self.owner,'POST','/api/owner/addons/save',{
+            'id':aid,'product_id':pid,'name':'مكسرات إضافية',
+            'price':3,'max_qty':2,'enabled':True})
+        self.assertEqual(code,200,r)
+        code,r=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',{
+            'product_id':pid,'qty':1,'addons':[{'id':aid,'qty':2}]})
+        self.assertEqual(code,200,r)
+        self.assertEqual(r['total_fils'],4000)
+        code,overview=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(o for o in overview['orders'] if o['id']==oid)
+        original=next(item for item in current['items'] if item['price_fils']==1200)
+        new=next(item for item in current['items'] if item['price_fils']==1600)
+        self.assertEqual(original['addons'][0]['name'],'زيادة فول سوداني')
+        self.assertEqual(new['addons'][0]['name'],'مكسرات إضافية')
+        self.assertEqual(new['addons'][0]['qty'],2)
+        code,r=self.request(self.owner,'POST',f'/api/owner/addons/{aid}/delete',{})
+        self.assertEqual(code,200,r)
+        code,menu=self.request(self.customer,'GET','/api/products')
+        p=next(p for p in menu['products'] if p['id']==pid)
+        self.assertEqual(p['addons'],[])
+        code,r=self.request(self.customer,'POST','/api/orders',bad_order)
+        self.assertEqual(code,400,r)
+        code,overview=self.request(self.staff,'GET','/api/staff/overview')
+        self.assertEqual(len(next(o for o in overview['orders'] if o['id']==oid)['items']),2)
+
+
+    def test_owner_uploaded_image_uses_persistent_database(self):
+        import base64
+        import io
+        import sqlite3
+        from PIL import Image
+        code,login=self.request(self.owner,'POST','/api/owner/login',
+            {'username':'esmail','password':'test-owner-strong-password'})
+        self.assertEqual(code,200,login)
+        code,created=self.request(self.owner,'POST','/api/owner/product/save',{
+            'id':None,'name':'مشروب بصورة مخصصة','category':'Cold Drinks',
+            'price':18,'discount_percent':0,'available':True,'promo_only':False
+        })
+        self.assertEqual(code,200,created)
+        product_id=created['id']
+        buffer=io.BytesIO()
+        Image.new('RGB',(16,16),(115,20,90)).save(buffer,'PNG')
+        payload={'image':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii')}
+        code,image_result=self.request(self.owner,'POST',
+            f'/api/owner/products/{product_id}/image',payload)
+        self.assertEqual(code,200,image_result)
+        filename=image_result['image']
+        self.assertTrue(filename.startswith('uploads/'))
+        with sqlite3.connect(Path(self.tmp.name)/'highway67.sqlite3') as db:
+            stored=db.execute('SELECT content FROM uploaded_images WHERE filename=?',(filename,)).fetchone()
+            self.assertIsNotNone(stored)
+            self.assertTrue(stored[0].startswith(b'RIFF'))
+        request=Request(self.base+'/assets/'+filename,method='GET')
+        with self.customer.open(request,timeout=10) as response:
+            self.assertEqual(response.status,200)
+            self.assertEqual(response.headers.get_content_type(),'image/webp')
+            self.assertTrue(response.read().startswith(b'RIFF'))
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200)
+        product=next(p for p in menu['products'] if p['id']==product_id)
+        self.assertEqual(product['image'],filename)
+
 if __name__=='__main__':unittest.main()
