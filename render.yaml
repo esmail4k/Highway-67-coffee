@@ -28,6 +28,10 @@ services:
           property: connectionString
 
       - key: REQUIRE_OWNER_SMS_2FA
+        value: "0"
+      - key: OWNER_OTP_ENABLED
+        value: "0"
+      - key: OWNER_PANEL_ENABLED
         value: "1"
       - key: REQUIRE_STAFF_SMS_2FA
         value: "0"

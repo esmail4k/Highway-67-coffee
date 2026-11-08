@@ -1,6 +1,6 @@
 'use strict';
 let staffAccounts=[],overview=null,products=[],promos=[],activeView='overview',editProduct=null,editPromo=null,archiveData=null;
-let ownerReviews=[];
+let ownerReviews=[],ownerActivity=[];
 const errtxt=(id,s,ok=false)=>{$(id).textContent=s;$(id).classList.toggle('success',ok)};
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('ownerExport').classList.toggle('hidden',yes)}
 $('ownerExport').onclick=()=>{window.location.href='/api/owner/export.csv'};
@@ -21,7 +21,7 @@ $('verifyForm').onsubmit=async e=>{e.preventDefault();if(!currentChallenge)retur
 
 $('logout').onclick=async()=>{await api('/api/owner/logout','POST',{}).catch(()=>{});loginVisible(true)};
 async function boot(){try{const s=await api('/api/owner/session');loginVisible(!s.authenticated);if(s.authenticated)await loadAll()}catch{loginVisible(true)}}
-async function loadAll(){try{[overview,{products},{promotions:promos},{accounts:staffAccounts}]=await Promise.all([api('/api/owner/overview'),api('/api/owner/products'),api('/api/owner/promotions'),api('/api/owner/staff/accounts')]);render()}catch(e){alert(e.message)}}
+async function loadAll(){try{[overview,{products},{promotions:promos},{accounts:staffAccounts}]=await Promise.all([api('/api/owner/overview'),api('/api/owner/products'),api('/api/owner/promotions'),api('/api/owner/staff/accounts')]);render();if(activeView==='activity')loadOwnerActivity()}catch(e){alert(e.message)}}
 function render(){if(!overview)return;$('shiftStatus').textContent=overview.shift?'الوردية #'+overview.shift.id+' مفتوحة':'لا توجد وردية مفتوحة';$('shiftStatus').classList.toggle('on',!!overview.shift);
  renderBusinessTotals();renderDailySales();
  $('overviewStats').innerHTML=summaryCards(overview);$('recentOrders').innerHTML=overview.orders.length?overview.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد طلبات في الوردية الحالية.</div>';
@@ -107,8 +107,30 @@ async function loadOwnerReviews(){
  }catch(e){el.innerHTML='<div class="empty">'+safe(e.message)+'</div>'}
 }
 
-function ownerBill(o){return bill(o,false)+`<div class="deleteInvoice"><button type="button" class="button red sm" data-deleteinvoice="${o.id}">حذف الفاتورة #${o.id}</button></div>`}
+function ownerBill(o){
+ if(o.deleted_at)return bill(o,false)+`<div class="deleteInvoice"><span class="badge red">فاتورة محذوفة · لا تُحسب</span> <button type="button" class="button green sm" data-restoreinvoice="${o.id}">استرجاع الفاتورة #${o.id}</button></div>`;
+ return bill(o,false)+`<div class="deleteInvoice"><button type="button" class="button red sm" data-deleteinvoice="${o.id}">حذف الفاتورة #${o.id}</button></div>`
+}
+async function loadOwnerActivity(){
+ const container=$('ownerActivityList'),deleted=$('ownerDeletedInvoices');
+ if(!container||!deleted)return;
+ try{
+  const result=await api('/api/owner/activity');
+  ownerActivity=result.logs||[];
+  container.innerHTML=ownerActivity.length?ownerActivity.map(l=>`<article class="activity-record"><strong>${safe(l.actor)}</strong> · <small>${when(l.created_at)}</small><p>${safe(l.detail)}</p>${l.order_id?'<small>الفاتورة #'+Number(l.order_id)+'</small>':''}</article>`).join(''):'<div class="empty">ما فيه تعديلات مسجّلة للحين.</div>';
+  deleted.innerHTML=(result.deleted_orders||[]).length?result.deleted_orders.map(o=>`<article class="activity-record"><strong>فاتورة #${o.id} · ${safe(o.customer_name)}</strong><p>${fmt(o.total_fils)} · حذفها ${safe(o.deleted_by)} · ${when(o.deleted_at)}</p><button class="button green sm" data-restoreinvoice="${o.id}">استرجاع الفاتورة</button></article>`).join(''):'<div class="empty">ما فيه فواتير محذوفة.</div>';
+  bindInvoiceDeletes()
+ }catch(e){container.textContent=e.message}
+}
+$('refreshOwnerActivity').onclick=loadOwnerActivity;
 function bindInvoiceDeletes(){
+ document.querySelectorAll('[data-restoreinvoice]').forEach(b=>b.onclick=async()=>{
+  const id=Number(b.dataset.restoreinvoice);
+  if(!confirm('استرجاع الفاتورة #'+id+' وإعادتها إلى الحسابات؟'))return;
+  b.disabled=true;
+  try{await api('/api/owner/orders/'+id+'/restore','POST',{});await loadAll();await loadOwnerActivity()}
+  catch(e){alert(e.message);b.disabled=false}
+ });
  document.querySelectorAll('[data-deleteinvoice]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteinvoice);
   if(b.dataset.confirmDelete!=='yes'){
@@ -125,8 +147,8 @@ function bindInvoiceDeletes(){
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
  activeView=b.dataset.view;
  document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
- ['overview','products','promos','archive','staffAccounts','feedback'].forEach(k=>$('view-'+k).classList.toggle('hidden',k!==activeView));
- if(activeView==='feedback')loadOwnerReviews();
+ ['overview','products','promos','archive','staffAccounts','feedback','activity'].forEach(k=>$('view-'+k).classList.toggle('hidden',k!==activeView));
+ if(activeView==='feedback')loadOwnerReviews();if(activeView==='activity')loadOwnerActivity();
 });
 $('ownerProductSearch').addEventListener('input',renderOwnerProducts);
 $('refreshOwnerFeedback').onclick=loadOwnerReviews;
