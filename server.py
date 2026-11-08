@@ -831,6 +831,36 @@ class Handler(BaseHTTPRequestHandler):
                 record_log(d,actor_name(self,role),'product_availability',None,f"{pid}: {'متوفر' if available else 'غير متوفر'}")
                 d.commit()
             return self.sendj(200,{'ok':True,'id':pid,'available':available})
+        match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/items/add',path)
+        if match:
+            role,oid=match.group(1),int(match.group(2))
+            if not self.auth(role):return
+            pid=data.get('product_id');qty=data.get('qty',1)
+            if not isinstance(pid,str) or type(qty)!=int or not 1<=qty<=30:
+                return self.sendj(400,{'error':'المنتج أو الكمية غير صحيحة'})
+            actor=actor_name(self,role)
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                order=d.execute('SELECT o.*,s.ended_at FROM orders o JOIN shifts s ON s.id=o.shift_id WHERE o.id=?',(oid,)).fetchone()
+                if not order or order['deleted_at']:return self.sendj(404,{'error':'الفاتورة غير موجودة'})
+                if order['ended_at'] or order['status'] not in ('new','ready'):
+                    return self.sendj(409,{'error':'لا يمكن تعديل الفاتورة بعد التسليم أو إغلاق الوردية'})
+                product=d.execute('SELECT * FROM products WHERE id=?',(pid,)).fetchone()
+                if not product or not product['available'] or product['price_fils']<=0:
+                    return self.sendj(409,{'error':'المنتج غير متوفر'})
+                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid)).fetchone()
+                if existing:
+                    if existing['qty']+qty>30:return self.sendj(400,{'error':'الكمية تتجاوز 30'})
+                    d.execute('UPDATE order_items SET qty=qty+? WHERE id=?',(qty,existing['id']))
+                else:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                              (oid,pid,product['name'],product['image'],qty,product['price_fils'],product['price_fils'],'',0,''))
+                total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
+                if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
+                d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
+                record_log(d,actor,'item_added',oid,f"إضافة {product['name']} ×{qty}؛ الإجمالي {order['total_fils']/100:.2f} ← {total/100:.2f} درهم")
+                d.commit()
+            return self.sendj(200,{'ok':True,'total_fils':total})
         match=re.fullmatch(r'/api/(staff|owner)/orders/(\d+)/items/(\d+)/(quantity|remove)',path)
         if match:
             role,oid,item_id,action=match.group(1),int(match.group(2)),int(match.group(3)),match.group(4)

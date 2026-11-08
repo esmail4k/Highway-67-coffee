@@ -54,9 +54,29 @@ async function bindStaffInvoiceControls(){
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/remove','POST',{});await refresh()}
   catch(e){alert(e.message)}finally{b.disabled=false}
  });
+ document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=async()=>{
+  const id=Number(b.dataset.addItem);
+  try{
+   const menu=await api('/api/products');
+   const available=(menu.products||[]).filter(p=>p.available&&p.price_fils>0);
+   if(!available.length){alert('ما فيه منتجات متوفرة حالياً');return}
+   const choices=available.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.price_fils)).join('\\n');
+   const selection=prompt('اختر رقم المنتج لإضافته إلى الفاتورة #'+id+'\\n'+choices);
+   if(selection===null)return;
+   const index=Number(selection);
+   if(!Number.isInteger(index)||index<1||index>available.length){alert('اختيار غير صحيح');return}
+   const qtyText=prompt('كم حبة تبا تضيف؟ (1 إلى 30)','1');
+   if(qtyText===null)return;
+   const qty=Number(qtyText);
+   if(!Number.isInteger(qty)||qty<1||qty>30){alert('الكمية غير صحيحة');return}
+   b.disabled=true;
+   await api('/api/staff/orders/'+id+'/items/add','POST',{product_id:available[index-1].id,qty});
+   await refresh();
+  }catch(e){alert(e.message)}finally{b.disabled=false}
+ });
  document.querySelectorAll('[data-delete-staff-order]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteStaffOrder);
-  if(!confirm('حذف الفاتورة #'+id+' من الطلبات والمبيعات؟ يستطيع المدير استرجاعها.'))return;
+  if(!confirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/delete','POST',{confirmation:'DELETE '+id});await refresh()}
   catch(e){alert(e.message)}finally{b.disabled=false}

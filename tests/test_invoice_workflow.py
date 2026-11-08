@@ -115,6 +115,16 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertEqual(code,200,r)
         self.assertEqual(r['total_fils'],4050)
 
+        code,r=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/add',
+            {'product_id':'mojito','qty':1})
+        self.assertEqual(code,200,r)
+        self.assertEqual(r['total_fils'],5649)
+        code,overview=self.request(self.staff,'GET','/api/staff/overview')
+        current=next(x for x in overview['orders'] if x['id']==oid)
+        substitute=next(x for x in current['items'] if x['product_id']=='mojito')
+        code,r=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/{substitute["id"]}/remove',{})
+        self.assertEqual(code,200,r)
+        self.assertEqual(r['total_fils'],4050)
         code,r=self.request(self.staff,'POST',f'/api/staff/orders/{oid}/items/{cap["id"]}/remove',{})
         self.assertEqual(code,409,r) # Last item must be preserved for full-invoice restore
 
@@ -130,6 +140,7 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertTrue(any(x['id']==oid for x in activity['deleted_orders']))
         self.assertTrue(any(x['action']=='quantity_changed' for x in activity['logs']))
         self.assertTrue(any(x['action']=='item_removed' for x in activity['logs']))
+        self.assertTrue(any(x['action']=='item_added' for x in activity['logs']))
         self.assertTrue(any(x['action']=='product_availability' for x in activity['logs']))
         self.assertTrue(any(x['action']=='order_deleted' for x in activity['logs']))
 
