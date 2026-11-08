@@ -11,9 +11,30 @@ function finalPrice(p){return Number(p.final_price_fils!=null?p.final_price_fils
 function notice(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(notice.t);notice.t=setTimeout(()=>$('toast').classList.remove('show'),2400)}
 function qty(){return Object.values(cart).reduce((a,n)=>a+n,0)}
 function productForKey(key){return products.find(p=>p.id===key.split('__')[0])}
-function shotsForKey(key){const match=/__caramel([1-5])$/.exec(key);return match?Number(match[1]):(key.endsWith('__caramel')?1:0)}
+function shotsForKey(key){const match=/__caramel([1-5])(?:__addons[0-9,-]+)?$/.exec(key);return match?Number(match[1]):(key.endsWith('__caramel')?1:0)}
 function syrupForKey(key){return shotsForKey(key)>0?'caramel':''}
-function unitPrice(key){const p=productForKey(key);return p?finalPrice(p)+(syrupForKey(key)?100:0):0}
+function extrasForKey(key){
+ const match=/__addons([0-9,-]+)$/.exec(key);
+ if(!match)return [];
+ return match[1].split(',').map(k=>{const [id,qty]=k.split('-').map(Number);return {id,qty}}).filter(x=>Number.isInteger(x.id)&&Number.isInteger(x.qty)&&x.qty>0);
+}
+function addonCostForKey(key){
+ const p=productForKey(key);
+ if(!p)return 0;
+ return extrasForKey(key).reduce((sum,selected)=>{
+  const addon=(p.addons||[]).find(a=>a.id===selected.id);
+  return sum+(addon?addon.price_fils*selected.qty:0);
+ },0);
+}
+function extraLabelForKey(key){
+ const p=productForKey(key);
+ if(!p)return '';
+ return extrasForKey(key).map(sel=>{
+  const addon=(p.addons||[]).find(a=>a.id===sel.id);
+  return addon?'+ '+addon.name+(sel.qty>1?' × '+sel.qty:''):'إضافة لم تعد متاحة';
+ }).join('، ');
+}
+function unitPrice(key){const p=productForKey(key);return p?finalPrice(p)+(syrupForKey(key)?100:0)+addonCostForKey(key):0}
 function sum(){return Object.entries(cart).reduce((total,[key,n])=>total+unitPrice(key)*n,0)}
 function renderCards(){
  const sections=groups.filter(([id])=>selection==='all'||selection===id).map(([id,label,icon])=>{
@@ -106,30 +127,58 @@ function closeCustomizer(){
  $('customModal').hidden=true;$('customOverlay').hidden=true;
  document.body.style.overflow='';customizeId=null;customizeSource=null;
 }
+function currentCustomAddons(){
+ return Array.from(document.querySelectorAll('#extraOptionsList [data-addon-choice]')).map(input=>{
+  const qty=input.type==='checkbox'?(input.checked?1:0):Number(input.value);
+  return {id:Number(input.dataset.addonChoice),qty};
+ }).filter(x=>Number.isInteger(x.id)&&Number.isInteger(x.qty)&&x.qty>0).sort((a,b)=>a.id-b.id);
+}
 function updateCustomPrice(){
  const p=products.find(x=>x.id===customizeId);
  if(!p)return;
- const caramel=document.querySelector('input[name="syrup"]:checked')?.value==='caramel';
- $('customItem').textContent=p.name+' · '+money(finalPrice(p)+(caramel?100:0));
+ const caramel=!$('syrupFieldset').hidden&&document.querySelector('input[name="syrup"]:checked')?.value==='caramel';
+ const extras=currentCustomAddons();
+ const extraTotal=extras.reduce((total,x)=>{
+  const a=(p.addons||[]).find(a=>a.id===x.id);
+  return total+(a?a.price_fils*x.qty:0);
+ },0);
+ $('customItem').textContent=p.name+' · '+money(finalPrice(p)+(caramel?100:0)+extraTotal);
 }
 function openCustomizer(id,source){
  customizeId=id;customizeSource=source;
  const p=products.find(x=>x.id===id);if(!p)return;
+ const syrupAllowed=['spanish','icedspanish','latte','icedlatte'].includes(id);
+ $('syrupFieldset').hidden=!syrupAllowed;
+ $('customCaramelPrice').hidden=!syrupAllowed;
+ $('customHint').textContent=syrupAllowed?'اختر إضافات مشروبك':'اختر الإضافات التي تريدها مع المشروب';
  document.querySelector('input[name="syrup"][value=""]').checked=true;
+ const addons=p.addons||[];
+ $('extraOptions').hidden=!addons.length;
+ $('extraOptionsList').innerHTML=addons.map(a=>{
+  const choice=a.max_qty===1
+   ?'<input type="checkbox" data-addon-choice="'+a.id+'" aria-label="'+esc(a.name)+'">'
+   :'<input type="number" data-addon-choice="'+a.id+'" min="0" max="'+a.max_qty+'" step="1" value="0" aria-label="عدد '+esc(a.name)+'">';
+  return '<label class="custom-extra-option"><span><strong>'+esc(a.name)+'</strong><small>+'+money(a.price_fils)+(a.max_qty===1?' · مرة واحدة':' · حد أقصى '+a.max_qty)+'</small></span>'+choice+'</label>';
+ }).join('');
+ document.querySelectorAll('#extraOptionsList [data-addon-choice]').forEach(input=>input.addEventListener('change',updateCustomPrice));
+ document.querySelectorAll('#extraOptionsList input[type=number]').forEach(input=>input.addEventListener('input',updateCustomPrice));
  updateCustomPrice();
  $('customOverlay').hidden=false;$('customModal').hidden=false;
  document.body.style.overflow='hidden';
  $('confirmCustom').focus();
 }
-function addToCart(id,shots,source){
+function addToCart(id,shots,source,addons=[]){
  const p=products.find(x=>x.id===id);if(!p||!p.available)return;
- const key=id+(shots?'__caramel1':'');
+ const selected=addons.slice().sort((a,b)=>a.id-b.id);
+ const suffix=selected.length?'__addons'+selected.map(x=>x.id+'-'+x.qty).join(','):'';
+ const key=id+(shots?'__caramel1':'')+suffix;
  cart[key]=Math.min(30,(cart[key]||0)+1);
  renderCart();flyToCart(p,source);showCartConfirm(p,shots,source);
 }
 function add(id,source){
- if(!products.find(p=>p.id===id&&p.available))return notice('هذا المنتج غير متوفر حالياً');
- if(['spanish','icedspanish','latte','icedlatte'].includes(id))return openCustomizer(id,source);
+ const product=products.find(p=>p.id===id&&p.available);
+ if(!product)return notice('هذا المنتج غير متوفر حالياً');
+ if(['spanish','icedspanish','latte','icedlatte'].includes(id)||(product.addons||[]).length)return openCustomizer(id,source);
  addToCart(id,0,source);
 }
 $('closeCustom').onclick=closeCustomizer;
@@ -140,8 +189,12 @@ $('confirmCustom').onclick=()=>{
  if(!customizeId)return;
  const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';
  if(syrup&&syrup!=='caramel')return;
- const id=customizeId,source=customizeSource,shots=syrup==='caramel'?1:0;
- closeCustomizer();addToCart(id,shots,source);
+ const id=customizeId,source=customizeSource,shots=syrup==='caramel'&&!$('syrupFieldset').hidden?1:0;
+ const selected=currentCustomAddons();
+ const p=products.find(x=>x.id===id);
+ if(selected.some(x=>{const a=(p?.addons||[]).find(a=>a.id===x.id);return !a||x.qty>a.max_qty})){
+  return notice('تأكد من عدد الإضافات المسموح');}
+ closeCustomizer();addToCart(id,shots,source,selected);
 };
 function renderCheckoutNotes(){
  $('checkoutItemNotes').innerHTML=Object.entries(cart).filter(([key,n])=>n>0&&productForKey(key)).map(([key,n])=>{
