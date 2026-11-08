@@ -21,7 +21,7 @@ $('verifyForm').onsubmit=async e=>{e.preventDefault();if(!currentChallenge)retur
 
 $('logout').onclick=async()=>{await api('/api/owner/logout','POST',{}).catch(()=>{});loginVisible(true)};
 async function boot(){try{const s=await api('/api/owner/session');loginVisible(!s.authenticated);if(s.authenticated)await loadAll()}catch{loginVisible(true)}}
-async function loadAll(){try{[overview,{products},{promotions:promos},{accounts:staffAccounts}]=await Promise.all([api('/api/owner/overview'),api('/api/owner/products'),api('/api/owner/promotions'),api('/api/owner/staff/accounts')]);render();if(activeView==='activity')loadOwnerActivity()}catch(e){alert(e.message)}}
+async function loadAll(){try{[overview,{products},{promotions:promos},{accounts:staffAccounts}]=await Promise.all([api('/api/owner/overview'),api('/api/owner/products'),api('/api/owner/promotions'),api('/api/owner/staff/accounts')]);render();if(activeView==='activity')loadOwnerActivity()}catch(e){uiAlert(e.message)}}
 function render(){if(!overview)return;$('shiftStatus').textContent=overview.shift?'الوردية #'+overview.shift.id+' مفتوحة':'لا توجد وردية مفتوحة';$('shiftStatus').classList.toggle('on',!!overview.shift);
  renderBusinessTotals();renderDailySales();
  $('overviewStats').innerHTML=summaryCards(overview);$('recentOrders').innerHTML=overview.orders.length?overview.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد طلبات في الوردية الحالية.</div>';
@@ -30,15 +30,15 @@ function render(){if(!overview)return;$('shiftStatus').textContent=overview.shif
  const weekdayNames=['الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
  $('promoList').innerHTML=promos.length?promos.map(p=>{let days=[];try{days=JSON.parse(p.days||'[]')}catch{}const schedule=p.mode==='weekly'?days.map(d=>weekdayNames[d]).join('، ')+' · '+p.start_time+'–'+p.end_time:((p.start_at||'')+' إلى '+(p.end_at||''));return `<article class="miniPromo"><div><strong>${safe(p.title)}</strong> <span class="badge ${p.enabled?'green':'grey'}">${p.enabled?'مفعّل':'متوقف'}</span><p>${safe(p.subtitle)}<br>المنتج: ${safe((products.find(x=>x.id===p.product_id)||{}).name||p.product_id)} · خصم ${p.discount_percent}%<br>${safe(schedule)}</p></div><div class="actions"><button class="button outline sm" data-editpromo="${p.id}">تعديل</button><button class="button red sm" data-deletepromo="${p.id}">حذف</button></div></article>`}).join(''):'<div class="empty">ما في عروض بعد. أضف أول عرض من الزر الموجود فوق.</div>';
  document.querySelectorAll('[data-editpromo]').forEach(b=>b.onclick=()=>promoModal(promos.find(p=>p.id===Number(b.dataset.editpromo))));
- document.querySelectorAll('[data-deletepromo]').forEach(b=>b.onclick=async()=>{if(!confirm('حذف هذا العرض؟'))return;try{await api('/api/owner/promos/'+b.dataset.deletepromo+'/delete','POST',{});await loadAll()}catch(e){alert(e.message)}});
+ document.querySelectorAll('[data-deletepromo]').forEach(b=>b.onclick=async()=>{if(!uiConfirm('حذف هذا العرض؟'))return;try{await api('/api/owner/promos/'+b.dataset.deletepromo+'/delete','POST',{});await loadAll()}catch(e){uiAlert(e.message)}});
  $('promoProduct').innerHTML=products.map(p=>`<option value="${safe(p.id)}">${safe(p.name)}</option>`).join('');
  $('archiveList').innerHTML=overview.shifts.length?overview.shifts.map(s=>`<article class="shift"><div><strong>${shiftName(s)}</strong> ${s.hidden_for_staff?'<span class="badge red">مخفي عن الموظفين</span>':''} ${s.ended_at?'':'<span class="badge green">مفتوح</span>'}<p>${s.order_count} طلب · ${fmt(s.sales_fils)} · ${s.ended_at?'انتهى '+when(s.ended_at):'بدأ '+when(s.started_at)}</p></div><div class="actions"><button class="button outline sm" data-viewshift="${s.id}">عرض وتعديل</button>${s.hidden_for_staff?`<button class="button green sm" data-restore="${s.id}">استرجاع</button>`:''}${s.ended_at?`<button class="button red sm" data-purge="${s.id}">حذف نهائي</button>`:''}</div></article>`).join(''):'<div class="empty">لا توجد أيام مسجلة.</div>';
  document.querySelectorAll('[data-viewshift]').forEach(b=>b.onclick=()=>openShift(Number(b.dataset.viewshift)));
- document.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{try{await api('/api/owner/shifts/'+b.dataset.restore+'/restore','POST',{});await loadAll()}catch(e){alert(e.message)}});
+ document.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{try{await api('/api/owner/shifts/'+b.dataset.restore+'/restore','POST',{});await loadAll()}catch(e){uiAlert(e.message)}});
  document.querySelectorAll('[data-purge]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.purge);
   if(b.dataset.confirmPurge!=='yes'){b.dataset.confirmPurge='yes';b.textContent='تأكيد الحذف النهائي';return}
-  try{await api('/api/owner/shifts/'+id+'/permanent-delete','POST',{confirmation:'DELETE '+id});await loadAll()}catch(e){alert(e.message)}
+  try{await api('/api/owner/shifts/'+id+'/permanent-delete','POST',{confirmation:'DELETE '+id});await loadAll()}catch(e){uiAlert(e.message)}
  });
  renderStaffAccounts();
  bindInvoiceDeletes();
@@ -85,7 +85,7 @@ function renderOwnerProducts(){
    await api('/api/owner/products/'+encodeURIComponent(id)+'/availability','POST',{available});
    const p=products.find(p=>p.id===id);if(p)p.available=available?1:0;
    renderOwnerProducts();
-  }catch(e){alert(e.message);b.disabled=false}
+  }catch(e){uiAlert(e.message);b.disabled=false}
  });
 }
 async function loadOwnerReviews(){
@@ -127,10 +127,10 @@ $('refreshOwnerActivity').onclick=loadOwnerActivity;
 function bindInvoiceDeletes(){
  document.querySelectorAll('[data-restoreinvoice]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.restoreinvoice);
-  if(!confirm('استرجاع الفاتورة #'+id+' وإعادتها إلى الحسابات؟'))return;
+  if(!uiConfirm('استرجاع الفاتورة #'+id+' وإعادتها إلى الحسابات؟'))return;
   b.disabled=true;
   try{await api('/api/owner/orders/'+id+'/restore','POST',{});await loadAll();await loadOwnerActivity()}
-  catch(e){alert(e.message);b.disabled=false}
+  catch(e){uiAlert(e.message);b.disabled=false}
  });
  document.querySelectorAll('[data-deleteinvoice]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteinvoice);
@@ -142,7 +142,7 @@ function bindInvoiceDeletes(){
    await api('/api/owner/orders/'+id+'/delete','POST',{confirmation:'DELETE '+id});
    await loadAll();
    if(archiveData?.shift){const sid=archiveData.shift.id;const latest=await api('/api/owner/shifts/'+sid);archiveData=latest;$('shiftModalStats').innerHTML=summaryCards(latest);$('shiftModalOrders').innerHTML=latest.orders.length?latest.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد فواتير في هذا اليوم.</div>';bindInvoiceDeletes()}
-  }catch(e){alert(e.message);b.disabled=false}
+  }catch(e){uiAlert(e.message);b.disabled=false}
  });
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
@@ -224,7 +224,7 @@ function renderOwnerAddons(){
  });
  document.querySelectorAll('[data-delete-addon]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteAddon);
-  if(!confirm('حذف هذه الإضافة من المنتج؟'))return;
+  if(!uiConfirm('حذف هذه الإضافة من المنتج؟'))return;
   b.disabled=true;
   try{
    await api('/api/owner/addons/'+id+'/delete','POST',{});
@@ -260,7 +260,7 @@ $('addonForm').onsubmit=async e=>{
 function promoModal(p){editPromo=p||null;$('promoTitle').textContent=p?'تعديل العرض':'إنشاء عرض';$('promoId').value=p?.id||'';$('promoName').value=p?.title||'';$('promoSubtitle').value=p?.subtitle||'';$('promoProduct').value=p?.product_id||products[0]?.id||'';$('promoDiscount').value=p?.discount_percent||0;$('promoMode').value=p?.mode||'weekly';$('promoStartTime').value=p?.start_time||'00:00';$('promoEndTime').value=p?.end_time||'23:59';$('promoStartAt').value=p?.start_at||'';$('promoEndAt').value=p?.end_at||'';$('promoEnabled').checked=p?!!p.enabled:true;let days=[];try{days=JSON.parse(p?.days||'[0]')}catch{}document.querySelectorAll('.dayCheck').forEach(x=>x.checked=days.includes(Number(x.value)));$('promoMode').onchange();errtxt('promoError','');modal('promoModal',true)}
 $('newPromo').onclick=()=>promoModal();$('promoMode').onchange=()=>{$('weeklyFields').classList.toggle('hidden',$('promoMode').value!=='weekly');$('onceFields').classList.toggle('hidden',$('promoMode').value!=='one_time')};
 $('promoForm').onsubmit=async e=>{e.preventDefault();$('savePromo').disabled=true;errtxt('promoError','');try{const mode=$('promoMode').value;const payload={id:$('promoId').value?Number($('promoId').value):null,title:$('promoName').value,subtitle:$('promoSubtitle').value,product_id:$('promoProduct').value,mode,discount_percent:Number($('promoDiscount').value),enabled:$('promoEnabled').checked,days:Array.from(document.querySelectorAll('.dayCheck:checked')).map(x=>Number(x.value)),start_time:$('promoStartTime').value,end_time:$('promoEndTime').value,start_at:$('promoStartAt').value,end_at:$('promoEndAt').value};await api('/api/owner/promo/save','POST',payload);modal('promoModal',false);await loadAll()}catch(err){errtxt('promoError',err.message)}finally{$('savePromo').disabled=false}};
-async function openShift(id){try{archiveData=await api('/api/owner/shifts/'+id);const s=archiveData.shift;$('shiftModalTitle').textContent=shiftName(s);$('shiftModalStats').innerHTML=summaryCards(archiveData);$('shiftModalOrders').innerHTML=archiveData.orders.length?archiveData.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد طلبات.</div>';bindInvoiceDeletes();$('shiftEditLabel').value=s.label||'';$('shiftEditDate').value=s.local_date;$('shiftEditNotes').value=s.notes||'';$('shiftEdit').classList.toggle('hidden',!s.ended_at);errtxt('shiftModalError','');document.querySelector('[data-archivetab="details"]').click();modal('shiftModal',true)}catch(e){alert(e.message)}}
+async function openShift(id){try{archiveData=await api('/api/owner/shifts/'+id);const s=archiveData.shift;$('shiftModalTitle').textContent=shiftName(s);$('shiftModalStats').innerHTML=summaryCards(archiveData);$('shiftModalOrders').innerHTML=archiveData.orders.length?archiveData.orders.map(o=>ownerBill(o)).join(''):'<div class="empty">لا توجد طلبات.</div>';bindInvoiceDeletes();$('shiftEditLabel').value=s.label||'';$('shiftEditDate').value=s.local_date;$('shiftEditNotes').value=s.notes||'';$('shiftEdit').classList.toggle('hidden',!s.ended_at);errtxt('shiftModalError','');document.querySelector('[data-archivetab="details"]').click();modal('shiftModal',true)}catch(e){uiAlert(e.message)}}
 document.querySelectorAll('[data-archivetab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-archivetab]').forEach(x=>x.classList.toggle('active',x===b));$('shiftModalOrders').classList.toggle('hidden',b.dataset.archivetab!=='details');$('shiftEdit').classList.toggle('hidden',b.dataset.archivetab!=='edit'||!archiveData?.shift?.ended_at)});
 $('shiftEdit').onsubmit=async e=>{e.preventDefault();if(!archiveData)return;try{await api('/api/owner/shifts/'+archiveData.shift.id+'/edit','POST',{label:$('shiftEditLabel').value,local_date:$('shiftEditDate').value,notes:$('shiftEditNotes').value});modal('shiftModal',false);await loadAll()}catch(err){errtxt('shiftModalError',err.message)}};
 setInterval(async()=>{if($('loginScreen').classList.contains('hidden')&&activeView==='overview')try{overview=await api('/api/owner/overview');render()}catch{}},7000);
