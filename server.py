@@ -860,16 +860,20 @@ class Handler(BaseHTTPRequestHandler):
                 if not order or order['deleted_at']:return self.sendj(404,{'error':'الفاتورة غير موجودة'})
                 if order['ended_at'] or order['status'] not in ('new','ready'):
                     return self.sendj(409,{'error':'لا يمكن تعديل الفاتورة بعد التسليم أو إغلاق الوردية'})
-                product=d.execute('SELECT * FROM products WHERE id=?',(pid,)).fetchone()
+                # Match the live customer menu: availability, promo-only visibility,
+                # and the currently active discounted price.
+                menu_products,_=catalog(d)
+                product=next((p for p in menu_products if p['id']==pid),None)
                 if not product or not product['available'] or product['price_fils']<=0:
                     return self.sendj(409,{'error':'المنتج غير متوفر'})
-                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid)).fetchone()
+                unit_price=product['final_price_fils']
+                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND price_fils=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid,unit_price)).fetchone()
                 if existing:
                     if existing['qty']+qty>30:return self.sendj(400,{'error':'الكمية تتجاوز 30'})
                     d.execute('UPDATE order_items SET qty=qty+? WHERE id=?',(qty,existing['id']))
                 else:
                     d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                              (oid,pid,product['name'],product['image'],qty,product['price_fils'],product['price_fils'],'',0,''))
+                              (oid,pid,product['name'],product['image'],qty,unit_price,product['price_fils'],'',0,''))
                 total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
                 if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
                 d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
