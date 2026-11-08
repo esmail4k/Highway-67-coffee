@@ -251,11 +251,29 @@
     var m;
     if (dest === 'en') {
       if ((m = /^خصم (\d+)%$/.exec(value))) return m[1] + '% off';
+      if ((m = /^الإضافة: ([\d,.]+ AED)$/.exec(value))) return 'Addition: ' + m[1];
+      if ((m = /^إضافة منتج للفاتورة\s*#(\d+)$/.exec(value))) return 'Add item to invoice #' + m[1];
+      if ((m = /^إضافات: (.+)$/.exec(value))) return 'Extras: ' + convertName(m[1],'en');
+      if ((m = /^أقصى عدد لكل كوب:\s*(\d+)$/.exec(value))) return 'Maximum per cup: ' + m[1];
+      if ((m = /^(.+) · حد أقصى (\d+)$/.exec(value))) return convertName(m[1],'en') + ' · maximum ' + m[2];
+      if ((m = /^(.+) · مرة واحدة$/.exec(value))) return convertName(m[1],'en') + ' · one time only';
+      if ((m = /^(.+) · أقصى عدد لكل كوب: (\d+)(.*)$/.exec(value)))
+        return convertName(m[1],'en') + ' · maximum per cup: ' + m[2]
+          + m[3].replace(' · متوفرة',' · available').replace(' · مخفية',' · hidden');
+      if ((m = /^تأكيد حذف الفاتورة #(\d+)/.exec(value))) return 'Confirm deleting invoice #' + m[1];
+      if ((m = /^استرجاع الفاتورة #(\d+)/.exec(value))) return 'Restore invoice #' + m[1];
+      if ((m = /^إلغاء الفاتورة #(\d+)/.exec(value))) return 'Cancel invoice #' + m[1];
+      if ((m = /^الفاتورة #(\d+)$/.exec(value))) return 'Invoice #' + m[1];
+      if ((m = /^انتهى (\d{4}-\d\d-\d\d)$/.exec(value))) return 'Ended ' + m[1];
+      if ((m = /^بدأ (\d{4}-\d\d-\d\d)$/.exec(value))) return 'Started ' + m[1];
+      if ((m = /^(.+) × (\d+)$/.exec(value))) return convertName(m[1],'en') + ' × ' + m[2];
+      if ((m = /^(.+) · \+ كراميل$/.exec(value))) return convertName(m[1],'en') + ' · + Caramel';
+
       if ((m = /^✓ (.+?)(?: \+ كراميل × ([1-5]))? تمت إضافته للسلة$/.exec(value)))
         return '✓ ' + convertName(m[1],'en') + (m[2]?' + Caramel × '+m[2]:'') + ' added to cart';
       if ((m = /^\+ كراميل × ([1-5])$/.exec(value))) return '+ Caramel × ' + m[1];
       if ((m = /^تمت إضافة (.+) · كراميل إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' + Caramel to cart';
-      if ((m = /^(.+) · (\\d+(?:\\.\\d+)? AED)$/.exec(value))) return convertName(m[1], 'en') + ' · ' + m[2];
+      if ((m = /^(.+) · (\d+(?:\.\d+)? AED)$/.exec(value))) return convertName(m[1], 'en') + ' · ' + m[2];
       if ((m = /^تمت إضافة (.+) إلى السلة$/.exec(value))) return 'Added ' + convertName(m[1], 'en') + ' to cart';
       if ((m = /^حذف (.+) من السلة$/.exec(value))) return 'Remove ' + convertName(m[1], 'en') + ' from cart';
       if ((m = /^رقم طلبك #(\d+) — الإجمالي (.+)\. وصل الطلب إلى شاشة الموظفين\.$/.exec(value)))
