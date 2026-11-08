@@ -899,7 +899,9 @@ class Handler(BaseHTTPRequestHandler):
                 if order['ended_at']:return self.sendj(409,{'error':'هذا اليوم منتهي ولا يمكن تغيير حالته'})
                 if order['status']!=('new' if state=='ready' else 'ready'):return self.sendj(409,{'error':'الطلب تغيرت حالته مسبقاً'})
                 col='ready_at' if state=='ready' else 'delivered_at'
-                d.execute(f'UPDATE orders SET status=?,{col}=? WHERE id=?',(state,utcnow(),oid));d.commit()
+                d.execute(f'UPDATE orders SET status=?,{col}=? WHERE id=?',(state,utcnow(),oid))
+                record_log(d,actor_name(self,'staff'),'order_status',oid,'تحديث حالة الفاتورة إلى '+('جاهز' if state=='ready' else 'تم التسليم'))
+                d.commit()
             return self.sendj(200,{'ok':True,'status':state})
         match=re.fullmatch(r'/api/(staff|owner)/shifts/(\d+)/(edit|hide|restore|permanent-delete)',path)
         if match:
