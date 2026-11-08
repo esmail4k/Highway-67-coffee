@@ -607,7 +607,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.sendj(200,{'feedback':feedback})
         if path=='/api/owner/products':
             if not self.auth('owner'):return
-            with con() as d:result=[dict(p) for p in d.execute("SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid")]
+            with con() as d:
+                result=[dict(p) for p in d.execute("SELECT * FROM products WHERE id!='piccolo' ORDER BY rowid")]
+                all_addons=defaultdict(list)
+                for a in d.execute('SELECT id,product_id,name,price_fils,max_qty,enabled FROM product_addons ORDER BY id'):
+                    all_addons[a['product_id']].append(dict(a))
+                for p in result:p['addons']=all_addons.get(p['id'],[])
             return self.sendj(200,{'products':result})
         if path=='/api/owner/staff/accounts':
             if not self.auth('owner'):return
@@ -806,15 +811,17 @@ class Handler(BaseHTTPRequestHandler):
                         return self.sendj(400,{'error':'هذه الإضافة غير متاحة لهذا المشروب'})
                     if not isinstance(item_note,str) or len(item_note.strip())>160:
                         return self.sendj(400,{'error':'ملاحظة المنتج طويلة أو غير صحيحة'})
-                    unit_price=p['final_price_fils']+(100 if syrup=='caramel' else 0)
-                    lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price))
+                    try:addon_details,addon_total=priced_addons(p,x.get('addons',[]))
+                    except ValueError as e:return self.sendj(400,{'error':str(e)})
+                    unit_price=p['final_price_fils']+(100 if syrup=='caramel' else 0)+addon_total
+                    lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price,addon_details))
                     total+=unit_price*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
                 cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
                 oid=cursor.lastrowid
-                for p,qty,syrup,syrup_qty,item_note,unit_price in lines:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                              (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note))
+                for p,qty,syrup,syrup_qty,item_note,unit_price,addon_details in lines:
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note,addon_details) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                              (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note,json.dumps(addon_details,ensure_ascii=False)))
                 feedback_token=secrets.token_urlsafe(24)
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
@@ -909,14 +916,17 @@ class Handler(BaseHTTPRequestHandler):
                 product=next((p for p in menu_products if p['id']==pid),None)
                 if not product or not product['available'] or product['price_fils']<=0:
                     return self.sendj(409,{'error':'المنتج غير متوفر'})
-                unit_price=product['final_price_fils']
-                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND price_fils=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid,unit_price)).fetchone()
+                try:addon_details,addon_total=priced_addons(product,data.get('addons',[]))
+                except ValueError as e:return self.sendj(400,{'error':str(e)})
+                addon_json=json.dumps(addon_details,ensure_ascii=False)
+                unit_price=product['final_price_fils']+addon_total
+                existing=d.execute("SELECT id,qty FROM order_items WHERE order_id=? AND product_id=? AND price_fils=? AND addon_details=? AND COALESCE(syrup,'')='' AND COALESCE(item_note,'')=''",(oid,pid,unit_price,addon_json)).fetchone()
                 if existing:
                     if existing['qty']+qty>30:return self.sendj(400,{'error':'الكمية تتجاوز 30'})
                     d.execute('UPDATE order_items SET qty=qty+? WHERE id=?',(qty,existing['id']))
                 else:
-                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                              (oid,pid,product['name'],product['image'],qty,unit_price,product['price_fils'],'',0,''))
+                    d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note,addon_details) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                              (oid,pid,product['name'],product['image'],qty,unit_price,product['price_fils'],'',0,'',addon_json))
                 total=d.execute('SELECT COALESCE(SUM(qty*price_fils),0) FROM order_items WHERE order_id=?',(oid,)).fetchone()[0]
                 if total>10000000:return self.sendj(400,{'error':'الإجمالي كبير جداً'})
                 d.execute('UPDATE orders SET total_fils=? WHERE id=?',(total,oid))
