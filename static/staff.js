@@ -54,26 +54,7 @@ async function bindStaffInvoiceControls(){
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/remove','POST',{});await refresh()}
   catch(e){alert(e.message)}finally{b.disabled=false}
  });
- document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=async()=>{
-  const id=Number(b.dataset.addItem);
-  try{
-   const menu=await api('/api/products');
-   const available=(menu.products||[]).filter(p=>p.available&&p.price_fils>0);
-   if(!available.length){alert('ما فيه منتجات متوفرة حالياً');return}
-   const choices=available.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.price_fils)).join('\\n');
-   const selection=prompt('اختر رقم المنتج لإضافته إلى الفاتورة #'+id+'\\n'+choices);
-   if(selection===null)return;
-   const index=Number(selection);
-   if(!Number.isInteger(index)||index<1||index>available.length){alert('اختيار غير صحيح');return}
-   const qtyText=prompt('كم حبة تبا تضيف؟ (1 إلى 30)','1');
-   if(qtyText===null)return;
-   const qty=Number(qtyText);
-   if(!Number.isInteger(qty)||qty<1||qty>30){alert('الكمية غير صحيحة');return}
-   b.disabled=true;
-   await api('/api/staff/orders/'+id+'/items/add','POST',{product_id:available[index-1].id,qty});
-   await refresh();
-  }catch(e){alert(e.message)}finally{b.disabled=false}
- });
+ document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=()=>openInvoiceProductPicker(Number(b.dataset.addItem)));
  document.querySelectorAll('[data-delete-staff-order]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteStaffOrder);
   if(!confirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
@@ -82,6 +63,82 @@ async function bindStaffInvoiceControls(){
   catch(e){alert(e.message)}finally{b.disabled=false}
  });
 }
+
+let invoiceItemOrderId=null,invoiceProductChoices=[],invoiceSelectedProduct=null,invoiceAddBusy=false;
+function closeInvoiceProductPicker(){
+ if(invoiceAddBusy)return;
+ $('addItemModal').classList.remove('show');
+ invoiceItemOrderId=null;
+ invoiceSelectedProduct=null;
+ invoiceProductChoices=[];
+}
+function updateInvoiceProductSubtotal(){
+ const selected=invoiceSelectedProduct;
+ const qty=Number($('addItemQuantity').value);
+ const valid=selected&&Number.isInteger(qty)&&qty>=1&&qty<=30;
+ $('addItemSubtotal').textContent=valid?'الإضافة: '+fmt(qty*Number(selected.final_price_fils??selected.price_fils)):'';
+ $('saveAddItem').disabled=!valid||invoiceAddBusy;
+}
+function pickInvoiceProduct(id){
+ invoiceSelectedProduct=invoiceProductChoices.find(p=>p.id===id)||null;
+ $('addItemSelection').textContent=invoiceSelectedProduct?invoiceSelectedProduct.name+' — '+fmt(invoiceSelectedProduct.final_price_fils??invoiceSelectedProduct.price_fils):'اختر المنتج من القائمة';
+ document.querySelectorAll('[data-invoice-product]').forEach(b=>{
+  const chosen=b.dataset.invoiceProduct===id;
+  b.classList.toggle('selected',chosen);
+  b.setAttribute('aria-pressed',String(chosen));
+ });
+ updateInvoiceProductSubtotal();
+}
+function renderInvoiceProductChoices(){
+ const q=$('addItemSearch').value.trim().toLocaleLowerCase();
+ const shown=invoiceProductChoices.filter(p=>p.name.toLocaleLowerCase().includes(q)||p.category.toLocaleLowerCase().includes(q));
+ $('addItemProducts').innerHTML=shown.length?shown.map(p=>{
+  const price=Number(p.final_price_fils??p.price_fils);
+  const discounted=price<Number(p.price_fils);
+  return '<button type="button" class="invoice-product-choice'+(invoiceSelectedProduct?.id===p.id?' selected':'')+'" data-invoice-product="'+safe(p.id)+'" aria-pressed="'+String(invoiceSelectedProduct?.id===p.id)+'"><img src="'+safe(asset(p.image))+'" alt="" loading="lazy"><span><strong>'+safe(p.name)+'</strong><small>'+safe(p.category)+'</small></span><span class="invoice-product-price">'+(discounted?'<del>'+fmt(p.price_fils)+'</del>':'')+fmt(price)+'</span></button>';
+ }).join(''):'<div class="empty">ما لقينا منتج متوفر بهذا الاسم.</div>';
+}
+async function openInvoiceProductPicker(id){
+ if(invoiceAddBusy)return;
+ invoiceItemOrderId=id;invoiceSelectedProduct=null;invoiceProductChoices=[];
+ $('addItemInvoiceNumber').textContent='#'+id;
+ $('addItemSearch').value='';$('addItemQuantity').value='1';
+ $('addItemError').textContent='';$('addItemSelection').textContent='اختر المنتج من القائمة';
+ $('addItemProducts').innerHTML='<div class="empty">جاري تحميل المنتجات...</div>';
+ $('saveAddItem').disabled=true;$('addItemSubtotal').textContent='';
+ $('addItemModal').classList.add('show');
+ $('addItemSearch').focus();
+ try{
+  const menu=await api('/api/products');
+  if(invoiceItemOrderId!==id)return;
+  invoiceProductChoices=(menu.products||[]).filter(p=>p.available&&Number(p.price_fils)>0&&Number(p.final_price_fils??p.price_fils)>=0);
+  renderInvoiceProductChoices();
+  if(!invoiceProductChoices.length)$('addItemError').textContent='ما في منتجات متوفرة حالياً.';
+ }catch(e){$('addItemError').textContent=e.message;$('addItemProducts').innerHTML=''}
+}
+$('addItemSearch').oninput=renderInvoiceProductChoices;
+$('addItemProducts').onclick=e=>{
+ const choice=e.target.closest('[data-invoice-product]');
+ if(choice)pickInvoiceProduct(choice.dataset.invoiceProduct);
+};
+$('addItemQuantity').oninput=updateInvoiceProductSubtotal;
+$('closeAddItemModal').onclick=closeInvoiceProductPicker;
+$('cancelAddItem').onclick=closeInvoiceProductPicker;
+$('addItemModal').onclick=e=>{if(e.target===$('addItemModal'))closeInvoiceProductPicker()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('addItemModal').classList.contains('show'))closeInvoiceProductPicker()});
+$('addItemForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(invoiceAddBusy||!invoiceSelectedProduct||!invoiceItemOrderId)return;
+ const qty=Number($('addItemQuantity').value);
+ if(!Number.isInteger(qty)||qty<1||qty>30){$('addItemError').textContent='اختر كمية من 1 إلى 30';return}
+ invoiceAddBusy=true;$('addItemError').textContent='';$('saveAddItem').disabled=true;
+ try{
+  await api('/api/staff/orders/'+invoiceItemOrderId+'/items/add','POST',{product_id:invoiceSelectedProduct.id,qty});
+  invoiceAddBusy=false;
+  closeInvoiceProductPicker();
+  await refresh();
+ }catch(err){invoiceAddBusy=false;$('addItemError').textContent=err.message;updateInvoiceProductSubtotal()}
+};
 async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
 $('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
