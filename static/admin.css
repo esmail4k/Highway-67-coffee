@@ -77,3 +77,20 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 .add-item-subtotal{font-weight:900;font-size:16px;color:#79522d}
 #addItemError{min-height:16px;margin-top:8px}
 @media(max-width:520px){.add-item-modal{padding:16px}.invoice-product-choice{gap:8px}.invoice-product-choice img{width:52px;height:52px}.invoice-product-price{font-size:12px}.bill .actions .add-to-invoice{width:100%}}
+
+/* Owner-controlled product extras */
+.addon-owner-list{display:grid;gap:9px;margin:15px 0}
+.addon-owner-row{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #e6dcd0;border-radius:12px;padding:13px;background:#fffcf8;flex-wrap:wrap}
+.addon-owner-row strong{display:block;margin-bottom:6px}
+.addon-owner-row small{color:#75695d;font-size:12px}
+#addonForm{border-top:1px solid #e6dcd0;margin-top:17px;padding-top:15px}
+#addonForm h3{margin-top:0;font-size:16px}
+#addonForm .hint{line-height:1.6}
+.invoice-addon-options{background:#fff9f2;border:1px solid #e7d8c9;border-radius:12px;padding:12px;margin:13px 0}
+.invoice-addon-options>strong{display:block;margin-bottom:9px}
+.invoice-addon-choice{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #ecdfd0}
+.invoice-addon-choice:last-child{border-bottom:0}
+.invoice-addon-choice span{font-weight:800}
+.invoice-addon-choice small{color:#837166;font-size:12px;font-weight:400;margin-right:9px}
+.invoice-addon-choice input[type=number]{max-width:75px;padding:8px;text-align:center;border:1px solid #d6c6b5;border-radius:8px}
+.invoice-addon-choice input[type=checkbox]{width:21px;height:21px;accent-color:#936a43}
