@@ -72,11 +72,40 @@ function closeInvoiceProductPicker(){
  invoiceSelectedProduct=null;
  invoiceProductChoices=[];
 }
+function chosenInvoiceAddons(){
+ return Array.from(document.querySelectorAll('#invoiceAddonOptions [data-invoice-addon]')).map(input=>({
+  id:Number(input.dataset.invoiceAddon),
+  qty:input.type==='checkbox'?(input.checked?1:0):Number(input.value)
+ })).filter(x=>x.qty>0);
+}
+function renderInvoiceAddonOptions(){
+ const extras=invoiceSelectedProduct?.addons||[];
+ const area=$('invoiceAddonOptions');
+ area.hidden=!extras.length;
+ area.innerHTML=extras.length?'<strong>إضافات المنتج</strong>'+extras.map(a=>
+  '<label class="invoice-addon-choice"><span>'+safe(a.name)+' <small>+'+fmt(a.price_fils)+'</small></span>'
+  +(a.max_qty===1?'<input type="checkbox" data-invoice-addon="'+a.id+'">':'<input type="number" data-invoice-addon="'+a.id+'" min="0" max="'+a.max_qty+'" value="0" step="1">')
+  +'</label>'
+ ).join(''):'';
+ area.querySelectorAll('input').forEach(input=>{
+  input.addEventListener('change',updateInvoiceProductSubtotal);
+  input.addEventListener('input',updateInvoiceProductSubtotal);
+ });
+}
 function updateInvoiceProductSubtotal(){
  const selected=invoiceSelectedProduct;
  const qty=Number($('addItemQuantity').value);
- const valid=selected&&Number.isInteger(qty)&&qty>=1&&qty<=30;
- $('addItemSubtotal').textContent=valid?'الإضافة: '+fmt(qty*Number(selected.final_price_fils??selected.price_fils)):'';
+ const chosen=chosenInvoiceAddons();
+ const validAddons=chosen.every(x=>{
+  const addon=(selected?.addons||[]).find(a=>a.id===x.id);
+  return addon&&Number.isInteger(x.qty)&&x.qty<=addon.max_qty;
+ });
+ const valid=selected&&Number.isInteger(qty)&&qty>=1&&qty<=30&&validAddons;
+ const extrasTotal=chosen.reduce((total,x)=>{
+  const addon=(selected?.addons||[]).find(a=>a.id===x.id);
+  return total+(addon?addon.price_fils*x.qty:0);
+ },0);
+ $('addItemSubtotal').textContent=valid?'الإضافة: '+fmt(qty*(Number(selected.final_price_fils??selected.price_fils)+extrasTotal)):'';
  $('saveAddItem').disabled=!valid||invoiceAddBusy;
 }
 function pickInvoiceProduct(id){
@@ -87,6 +116,7 @@ function pickInvoiceProduct(id){
   b.classList.toggle('selected',chosen);
   b.setAttribute('aria-pressed',String(chosen));
  });
+ renderInvoiceAddonOptions();
  updateInvoiceProductSubtotal();
 }
 function renderInvoiceProductChoices(){
@@ -105,6 +135,7 @@ async function openInvoiceProductPicker(id){
  $('addItemSearch').value='';$('addItemQuantity').value='1';
  $('addItemError').textContent='';$('addItemSelection').textContent='اختر المنتج من القائمة';
  $('addItemProducts').innerHTML='<div class="empty">جاري تحميل المنتجات...</div>';
+ $('invoiceAddonOptions').innerHTML='';$('invoiceAddonOptions').hidden=true;
  $('saveAddItem').disabled=true;$('addItemSubtotal').textContent='';
  $('addItemModal').classList.add('show');
  $('addItemSearch').focus();
@@ -133,7 +164,9 @@ $('addItemForm').onsubmit=async e=>{
  if(!Number.isInteger(qty)||qty<1||qty>30){$('addItemError').textContent='اختر كمية من 1 إلى 30';return}
  invoiceAddBusy=true;$('addItemError').textContent='';$('saveAddItem').disabled=true;
  try{
-  await api('/api/staff/orders/'+invoiceItemOrderId+'/items/add','POST',{product_id:invoiceSelectedProduct.id,qty});
+  const addons=chosenInvoiceAddons();
+  if(addons.some(x=>{const a=(invoiceSelectedProduct.addons||[]).find(a=>a.id===x.id);return !a||!Number.isInteger(x.qty)||x.qty>a.max_qty}))throw Error('عدد الإضافات غير صحيح');
+  await api('/api/staff/orders/'+invoiceItemOrderId+'/items/add','POST',{product_id:invoiceSelectedProduct.id,qty,addons});
   invoiceAddBusy=false;
   closeInvoiceProductPicker();
   await refresh();
