@@ -218,8 +218,11 @@ def init():
                          VALUES(?,?,?,?,?,?,?,?,1)""",
                       ('خصم مميز - آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
         d.execute("UPDATE promos SET title='خصم مميز - آخر ساعة' WHERE product_id='acai_smoothie' AND mode='last_hour'")
-        # Update the acai product photo without overwriting owner-set pricing or availability.
-        d.execute("UPDATE products SET image='acai-original-white.jpg' WHERE id='acai_smoothie'")
+        # The initial photo replacement runs once, then all owner photo edits are preserved.
+        acai_image_key='acai_original_photo_one_time_2026_11_08'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(acai_image_key,)).fetchone():
+            d.execute("UPDATE products SET image='acai-original-white.jpg' WHERE id='acai_smoothie' AND image IN ('iced.webp','acai-smoothie.svg','acai-smoothie.jpg')")
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(acai_image_key,))
         # Owner can freely edit or remove this default acai extra after its first creation.
         if not d.execute("SELECT 1 FROM site_migrations WHERE key='acai_peanuts_addon_2026_11_08'").fetchone():
             if not d.execute("SELECT 1 FROM product_addons WHERE product_id='acai_smoothie' AND name='إكسترا بينات'").fetchone():
