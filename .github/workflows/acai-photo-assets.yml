@@ -1,0 +1,42 @@
+name: Publish acai photo assets
+on:
+  push:
+    paths:
+      - '.github/workflows/acai-photo-assets.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch promotional photo
+        env:
+          IMAGE_URL: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fe88096b1-bec0-4cf0-bc28-342b97a9ce3e/watermark:F/width:182?csig=AAAAAAAAAAAAAAAAAAAAANHO0g_KHbI1frigY0ikjHZFQjX5IhWaDzZXSR0Z1AP-&exp=1794177491&osig=AAAAAAAAAAAAAAAAAAAAAHKS_MsnGh--YvND8WLZHcyt1UZn2TJYt3h5074ou8xy&signer=media-rpc&token=AAIAAU0AJGU4ODA5NmIxLWJlYzAtNGNmMC1iYzI4LTM0MmI5N2E5Y2UzZQAAAAABob1P4DgfZdSLs4XkC6GQo_j3kp39BdmdT7mjNIIaOMWUFH6DPQ&x-canva-quality=thumbnail'
+        run: |
+          curl --fail --location --retry 3 "$IMAGE_URL" -o /tmp/acai-poster.png
+          test -s /tmp/acai-poster.png
+      - name: Make poster and cup-only product image
+        run: |
+          python -m pip install --quiet Pillow
+          python - <<'PY'
+          from PIL import Image, ImageOps
+          im=Image.open('/tmp/acai-poster.png').convert('RGB')
+          im.save('static/assets/acai-promo.jpg',quality=94,optimize=True)
+          w,h=im.size
+          # Left half of the poster contains the branded smoothie cup.
+          cup=im.crop((int(w*.015),int(h*.025),int(w*.52),int(h*.90)))
+          bg=Image.new('RGB',(400,500),'white')
+          cup.thumbnail((370,470),Image.Resampling.LANCZOS)
+          bg.paste(cup,((400-cup.width)//2,(500-cup.height)//2))
+          bg.save('static/assets/acai-smoothie.jpg',quality=94,optimize=True)
+          PY
+      - name: Commit photos
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add static/assets/acai-promo.jpg static/assets/acai-smoothie.jpg
+          git commit -m 'Add acai promo poster and cup-only photo' || exit 0
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin HEAD:"$GITHUB_REF_NAME"
