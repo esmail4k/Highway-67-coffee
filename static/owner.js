@@ -97,7 +97,7 @@ async function loadOwnerReviews(){
    too_sweet:'حالي زيادة',not_hot:'الحرارة مب مضبوطة',taste:'الطعم أقل من المتوقع',
    missing:'ناقص منتج أو إضافة',presentation:'الشكل يحتاج تحسين',other:'سبب آخر'};
   el.innerHTML=ownerReviews.length?ownerReviews.map(x=>{
-   const mood=x.liked===1?'😍 أعجبهم':x.liked===0?'😕 يحتاج تحسين':'— بدون تقييم للطعم';
+   const mood=x.liked===1?' أعجبهم':x.liked===0?' يحتاج تحسين':'— بدون تقييم للطعم';
    const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
    const tags=(x.reasons||[]).map(t=>reasons[t]||t).join(' · ');
    return `<article class="owner-review"><div class="header"><b>طلب #${Number(x.order_id)} · ${mood}</b><small>${when(x.created_at)}</small></div>
