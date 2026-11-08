@@ -42,25 +42,25 @@ function render(){if(!data)return;const s=data.shift;
 async function bindStaffInvoiceControls(){
  document.querySelectorAll('[data-qty-change]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.qtyChange),item=Number(b.dataset.item),next=Number(b.dataset.qty)+Number(b.dataset.delta);
-  if(next<1){alert('لحذف المنتج بالكامل استخدم زر حذف المنتج');return}
+  if(next<1){uiAlert('لحذف المنتج بالكامل استخدم زر حذف المنتج');return}
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/quantity','POST',{qty:next});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
  document.querySelectorAll('[data-remove-item]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.removeItem),item=Number(b.dataset.item);
-  if(!confirm('حذف هذا المنتج من الفاتورة؟'))return;
+  if(!uiConfirm('حذف هذا المنتج من الفاتورة؟'))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/remove','POST',{});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
  document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=()=>openInvoiceProductPicker(Number(b.dataset.addItem)));
  document.querySelectorAll('[data-delete-staff-order]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteStaffOrder);
-  if(!confirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
+  if(!uiConfirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/delete','POST',{confirmation:'DELETE '+id});await refresh()}
-  catch(e){alert(e.message)}finally{b.disabled=false}
+  catch(e){uiAlert(e.message)}finally{b.disabled=false}
  });
 }
 
@@ -172,23 +172,23 @@ $('addItemForm').onsubmit=async e=>{
   await refresh();
  }catch(err){invoiceAddBusy=false;$('addItemError').textContent=err.message;updateInvoiceProductSubtotal()}
 };
-async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){alert(e.message)}}
+async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){uiAlert(e.message)}}
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
-$('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){alert(e.message)}};
+$('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){uiAlert(e.message)}};
 $('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
  await api('/api/staff/shift/end','POST',{});
  showLive();data=null;await refresh();
- }catch(e){$('refreshLabel').textContent=e.message;window.alert(e.message)}finally{b.disabled=false}};
+ }catch(e){$('refreshLabel').textContent=e.message;uiAlert(e.message)}finally{b.disabled=false}};
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');$('stockPage').classList.toggle('hidden',selectedPage!=='stock');if(selectedPage==='reviews')loadFeedback();if(selectedPage==='stock')loadStock();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
-async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){alert(e.message)}}
+async function openShift(id){try{loadedShift=(await api('/api/staff/shifts/'+id));let s=loadedShift.shift;$('modalTitle').textContent=shiftName(s);$('modalSummary').innerHTML=summaryCards(loadedShift);$('modalOrders').innerHTML=loadedShift.orders.length?loadedShift.orders.map(o=>bill(o,false)).join(''):'<div class="empty">لا توجد طلبات.</div>';$('shiftLabel').value=s.label||'';$('shiftNotes').value=s.notes||'';$('modalError').textContent='';document.querySelector('[data-mtab="orders"]').click();modal(true)}catch(e){uiAlert(e.message)}}
 document.querySelectorAll('[data-mtab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-mtab]').forEach(x=>x.classList.toggle('active',x===b));$('modalOrders').classList.toggle('hidden',b.dataset.mtab!=='orders');$('modalEdit').classList.toggle('hidden',b.dataset.mtab!=='edit')});
 $('modalEdit').onsubmit=async e=>{e.preventDefault();if(!loadedShift)return;try{await api(`/api/staff/shifts/${loadedShift.shift.id}/edit`,'POST',{label:$('shiftLabel').value,notes:$('shiftNotes').value});modal(false);await refresh()}catch(e){$('modalError').textContent=e.message}};
 async function hideShift(id,b){
  b=b||$('hideShift');
  if(b.dataset.confirmHide!=='yes'){b.dataset.confirmHide='yes';b.textContent='تأكيد الإخفاء';return}
- try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){alert(e.message)}
+ try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){uiAlert(e.message)}
 };
 $('hideShift').onclick=()=>{if(loadedShift)hideShift(loadedShift.shift.id,$('hideShift'))};
 setInterval(()=>refresh(),5000);setInterval(refreshOrderStatus,30000);boot();
