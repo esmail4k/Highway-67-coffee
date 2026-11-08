@@ -200,6 +200,13 @@ def init():
             d.execute('UPDATE products SET price_fils=1200 WHERE id=?',('nutella',))
             d.execute('UPDATE products SET price_fils=1300,name=? WHERE id=?',('كرواسون جبس جبن','chips'))
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
+        # Acai smoothie is a regular 25 AED menu item; the closing-hour promotion is conditional.
+        d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,1)",
+                  ('acai_smoothie','سموذي أساي','Cold Drinks',2500,'acai-smoothie.svg'))
+        if not d.execute("SELECT 1 FROM promos WHERE product_id='acai_smoothie' AND mode='last_hour'").fetchone():
+            d.execute("""INSERT INTO promos(title,subtitle,product_id,mode,days,start_time,end_time,discount_percent,enabled)
+                         VALUES(?,?,?,?,?,?,?,?,1)""",
+                      ('خصم مميز ⭐ آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
@@ -295,6 +302,15 @@ def parse_local(s):
 def current_promo(p,now_local):
     try:
         if not p['enabled']:return None
+        if p['mode']=='last_hour':
+            # Configure STORE_CLOSING_TIME in UAE local HH:MM (24-hour).
+            closing=os.environ.get('STORE_CLOSING_TIME','').strip()
+            if not re.fullmatch(r'(?:[01]\\d|2[0-3]):[0-5]\\d',closing):return None
+            hour,minute=map(int,closing.split(':'))
+            end=now_local.replace(hour=hour,minute=minute,second=0,microsecond=0)
+            if hour==0 and minute==0:end+=timedelta(days=1)
+            if end-timedelta(hours=1)<=now_local<end:return end
+            return None
         if p['mode']=='one_time':
             start=parse_local(p['start_at']);end=parse_local(p['end_at'])
             if start<=now_local<end:return end
