@@ -202,11 +202,13 @@ def init():
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
         # Acai smoothie is a regular 25 AED menu item; the closing-hour promotion is conditional.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,1)",
-                  ('acai_smoothie','سموذي أساي','Cold Drinks',2500,'acai-smoothie.svg'))
+                  ('acai_smoothie','سموذي أساي','Cold Drinks',2500,'acai-smoothie.jpg'))
         if not d.execute("SELECT 1 FROM promos WHERE product_id='acai_smoothie' AND mode='last_hour'").fetchone():
             d.execute("""INSERT INTO promos(title,subtitle,product_id,mode,days,start_time,end_time,discount_percent,enabled)
                          VALUES(?,?,?,?,?,?,?,?,1)""",
                       ('خصم مميز ⭐ آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
+        # Update the acai product photo without overwriting owner-set pricing or availability.
+        d.execute("UPDATE products SET image='acai-smoothie.jpg' WHERE id='acai_smoothie'")
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
@@ -346,7 +348,7 @@ def catalog(d):
     public_promos=[]
     for p in active:
         product=next((a for a in shown if a['id']==p['product_id']),None)
-        if product and product['available']:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':product['image']})
+        if product and product['available']:public_promos.append({k:p[k] for k in ('id','title','subtitle','product_id','discount_percent','expires_at')}|{'image':('acai-promo.jpg' if p['product_id']=='acai_smoothie' else product['image'])})
     return shown,public_promos
 
 def fils(value):
