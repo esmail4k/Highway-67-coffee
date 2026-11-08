@@ -1,0 +1,38 @@
+name: Build original acai product photo
+on:
+  push:
+    paths:
+      - '.github/workflows/acai-original-photo.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  product-photo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original white-background product photo
+        env:
+          CANVA_THUMB: 'https://media.canva.com/v2/image-resize/format:JPG/height:200/quality:75/uri:ifs%3A%2F%2FM%2F363ce898-9e56-4d22-a445-5eb678d3df16/watermark:F/width:98?csig=AAAAAAAAAAAAAAAAAAAAAHfk_us3llhuDGNw8ia4rtC9CxNGyzJTFsfxW_zCweEr&exp=1794176462&osig=AAAAAAAAAAAAAAAAAAAAADaL2znmyx_bFCduA1fncYRndClIrqUMzxPQIsn650hD&signer=media-rpc&token=AAIAAU0AJDM2M2NlODk4LTllNTYtNGQyMi1hNDQ1LTVlYjY3OGQzZGYxNgAAAAABob1ALLDwYuTCPcM3hkc2719o8EiWm_hsA9aZYMlNqTmxP84BFQ&x-canva-quality=thumbnail'
+        run: |
+          curl -fL --retry 2 -A 'Mozilla/5.0' "$CANVA_THUMB" -o /tmp/original-acai.jpg
+          file /tmp/original-acai.jpg
+      - name: Save product image
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          from PIL import Image
+          im=Image.open('/tmp/original-acai.jpg').convert('RGB')
+          canvas=Image.new('RGB',(440,660),'white')
+          im.thumbnail((400,620),Image.Resampling.LANCZOS)
+          canvas.paste(im,((440-im.width)//2,(660-im.height)//2))
+          canvas.save('static/assets/acai-original-white.jpg',quality=92)
+          PY
+      - name: Commit original photo
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add static/assets/acai-original-white.jpg
+          git commit -m 'Use original acai cup photo with white background' || exit 0
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin HEAD:"$GITHUB_REF_NAME"
