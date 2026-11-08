@@ -199,7 +199,7 @@ $('confirmCustom').onclick=()=>{
 function renderCheckoutNotes(){
  $('checkoutItemNotes').innerHTML=Object.entries(cart).filter(([key,n])=>n>0&&productForKey(key)).map(([key,n])=>{
   const p=productForKey(key);
-  return `<div class="checkout-item-note"><b>${esc(p.name)}${syrupForKey(key)?' · + كراميل':''} × ${n}</b><label>ملاحظة لهذا المنتج (اختياري)</label><input data-note="${esc(key)}" maxlength="160" value="${esc(cartNotes[key]||'')}" placeholder="مثلاً: بدون سكر، حليب أقل..."></div>`;
+  return `<div class="checkout-item-note"><b>${esc(p.name)}${syrupForKey(key)?' · + كراميل':''}${extrasForKey(key).length?' · '+esc(extraLabelForKey(key)):''} × ${n}</b><label>ملاحظة لهذا المنتج (اختياري)</label><input data-note="${esc(key)}" maxlength="160" value="${esc(cartNotes[key]||'')}" placeholder="مثلاً: بدون سكر، حليب أقل..."></div>`;
  }).join('');
  document.querySelectorAll('#checkoutItemNotes [data-note]').forEach(inp=>inp.addEventListener('input',()=>syncNote(inp)));
 }
@@ -213,7 +213,7 @@ function renderCart(){
  const list=Object.entries(cart).filter(([key,n])=>n>0&&productForKey(key));
  $('cartItems').innerHTML=list.length?list.map(([key,n])=>{
  const p=productForKey(key),shots=shotsForKey(key);
- return `<div class="cart-line"><div class="rowcart"><div class="cartPreview"><img src="${esc(img(p))}" alt=""><div><b>${esc(p.name)}</b>${shots?'<small class="cart-syrup">+ كراميل · 1 درهم</small>':''}<p>${money(unitPrice(key))} × ${n}</p><button type="button" class="removeItem" data-remove="${esc(key)}" aria-label="حذف ${esc(p.name)} من السلة">حذف المنتج</button></div></div><div class="controls"><button type="button" data-edit="${esc(key)}" data-delta="-1" aria-label="تقليل">−</button><b>${n}</b><button type="button" data-edit="${esc(key)}" data-delta="1" aria-label="زيادة">+</button></div></div><div class="cart-item-note"><label>ملاحظة خاصة لهذا المنتج (اختياري)</label><input data-note="${esc(key)}" maxlength="160" value="${esc(cartNotes[key]||'')}" placeholder="مثلاً: بدون سكر، ثلج أقل..."></div>${!p.available?'<div class="cart-unavailable">غير متوفر حالياً، احذف هذا المنتج قبل تأكيد الطلب</div>':''}</div>`;
+ return `<div class="cart-line"><div class="rowcart"><div class="cartPreview"><img src="${esc(img(p))}" alt=""><div><b>${esc(p.name)}</b>${shots?'<small class="cart-syrup">+ كراميل · 1 درهم</small>':''}${extrasForKey(key).length?'<small class="cart-syrup">'+esc(extraLabelForKey(key))+'</small>':''}<p>${money(unitPrice(key))} × ${n}</p><button type="button" class="removeItem" data-remove="${esc(key)}" aria-label="حذف ${esc(p.name)} من السلة">حذف المنتج</button></div></div><div class="controls"><button type="button" data-edit="${esc(key)}" data-delta="-1" aria-label="تقليل">−</button><b>${n}</b><button type="button" data-edit="${esc(key)}" data-delta="1" aria-label="زيادة">+</button></div></div><div class="cart-item-note"><label>ملاحظة خاصة لهذا المنتج (اختياري)</label><input data-note="${esc(key)}" maxlength="160" value="${esc(cartNotes[key]||'')}" placeholder="مثلاً: بدون سكر، ثلج أقل..."></div>${!p.available?'<div class="cart-unavailable">غير متوفر حالياً، احذف هذا المنتج قبل تأكيد الطلب</div>':''}</div>`;
  }).join(''):'<div class="cartEmpty">سلتك فاضية؛ أضف منتجات من القائمة.</div>';
  $('count').textContent=qty();$('total').textContent=money(sum());$('checkoutTotal').textContent=money(sum());
  $('checkout').disabled=!qty()||!shopOpen||list.some(([key])=>!productForKey(key).available);
@@ -234,7 +234,7 @@ $('goCart').onclick=()=>step('cart');
 $('checkoutForm').onsubmit=async e=>{
  e.preventDefault();$('submitOrder').disabled=true;$('checkoutError').textContent='جاري إرسال الطلب...';
  try{
-  const payload={customer_name:$('customerName').value.trim(),phone:$('customerPhone').value.trim(),car_plate:$('customerCar').value.trim(),notes:$('customerNotes').value.trim(),items:Object.keys(cart).filter(k=>cart[k]>0).map(key=>({id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key),syrup_qty:shotsForKey(key),item_note:(cartNotes[key]||'').trim()}))};
+  const payload={customer_name:$('customerName').value.trim(),phone:$('customerPhone').value.trim(),car_plate:$('customerCar').value.trim(),notes:$('customerNotes').value.trim(),items:Object.keys(cart).filter(k=>cart[k]>0).map(key=>({id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key),syrup_qty:shotsForKey(key),addons:extrasForKey(key),item_note:(cartNotes[key]||'').trim()}))};
   const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
   $('receiptText').textContent=`رقم طلبك #${result.id} — الإجمالي ${money(result.total_fils)}. وصل الطلب إلى شاشة الموظفين.`;
   feedbackToken=result.feedback_token||null;feedbackOrderId=result.id;resetFeedback();
