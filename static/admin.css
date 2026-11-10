@@ -94,3 +94,34 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 .invoice-addon-choice small{color:#837166;font-size:12px;font-weight:400;margin-right:9px}
 .invoice-addon-choice input[type=number]{max-width:75px;padding:8px;text-align:center;border:1px solid #d6c6b5;border-radius:8px}
 .invoice-addon-choice input[type=checkbox]{width:21px;height:21px;accent-color:#936a43}
+
+/* Usable product selection on mobile and desktop when editing an invoice. */
+.add-item-modal{max-width:740px;position:relative}
+.add-item-modal .picker-label{font-size:15px}
+#addItemSearch{font-size:16px;height:48px;border:2px solid #d5c6b4}
+.picker-results-count{font-size:12px;color:#6e5c49;font-weight:700;padding:0 2px 10px}
+.invoice-product-grid{max-height:min(44vh,390px);padding:3px 4px 8px;gap:9px}
+.invoice-product-choice{min-height:92px;border-radius:13px;padding:9px 12px;box-shadow:0 2px 8px #372b1b09}
+.invoice-product-choice img{width:76px;height:76px;object-fit:contain;background:white}
+.invoice-product-choice strong{font-size:15px;line-height:1.5}
+.invoice-product-choice .invoice-product-price{font-size:17px;color:#2a211c}
+.invoice-product-price small{font-size:11px;font-weight:700;color:#957347}
+.invoice-product-choice.selected .invoice-product-price small{color:#246d4d}
+.invoice-picked-item{display:flex;gap:12px;align-items:center;justify-content:flex-start;text-align:start}
+.invoice-picked-item img{width:64px;height:64px;object-fit:contain;background:white;border-radius:8px}
+.invoice-picked-item b{font-size:15px;display:block;line-height:1.5}
+.invoice-picked-item small{font-size:12px;display:block;margin-top:5px}
+.invoice-qty-controls{display:flex;align-items:center;border:1px solid #cfbda8;border-radius:10px;overflow:hidden}
+.invoice-qty-controls button{height:44px;width:40px;border:0;background:#f3ece2;font-size:24px;line-height:1}
+.invoice-qty-controls input{height:44px;width:68px;border:0;border-radius:0;font-size:17px;font-weight:800}
+.invoice-picker-actions{position:sticky;bottom:-23px;background:white;border-top:1px solid #e6dcd0;padding:14px 0 3px;z-index:2}
+.invoice-picker-actions #saveAddItem{font-size:15px;min-height:46px;flex:1}
+.invoice-picker-actions #cancelAddItem{min-height:46px}
+@media(max-width:650px){
+ .add-item-modal{max-height:96dvh;padding:18px 14px 12px}
+ .invoice-product-grid{max-height:38dvh}
+ .invoice-product-choice{min-height:88px}
+ .invoice-product-choice img{width:68px;height:68px}
+ .invoice-product-price{font-size:14px}
+ .invoice-picker-actions{bottom:-12px}
+}
