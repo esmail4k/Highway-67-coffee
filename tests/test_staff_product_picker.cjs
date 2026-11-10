@@ -84,7 +84,8 @@ async function main(){
  assert.ok(listed,'English name/ID should match the Arabic product');
  search.value='أساي';
  search.dispatchEvent(new window.Event('input',{bubbles:true}));
- assert.ok(document.querySelector('[data-invoice-product="acai_smoothie"]'));
+ listed=document.querySelector('[data-invoice-product="acai_smoothie"]');
+ assert.ok(listed);
  listed.click();
  assert.equal(document.getElementById('saveAddItem').disabled,false);
  assert.ok(document.getElementById('addItemSelection').querySelector('img'));
