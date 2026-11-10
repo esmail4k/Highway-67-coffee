@@ -125,3 +125,13 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
  .invoice-product-price{font-size:14px}
  .invoice-picker-actions{bottom:-12px}
 }
+
+/* Sign-in convenience: a protected remember-me cookie instead of saved passwords. */
+.login-password-row{display:flex;align-items:stretch;border:1px solid #d7cabb;border-radius:10px;overflow:hidden;background:#fff;margin:7px 0 13px}
+.login-password-row:focus-within{outline:2px solid #a58254;outline-offset:2px}
+.login-password-row input{flex:1;min-width:0;margin:0!important;border:0!important;background:transparent;border-radius:0!important;padding:12px!important}
+.login-password-row button{flex:0 0 auto;padding:0 14px;border:0;border-inline-start:1px solid #e5d9c9;background:#f6f2eb;color:#6b4c30;font-size:13px;font-weight:800}
+.remember-login-label{display:flex!important;align-items:center;gap:9px;margin:12px 0 2px!important;cursor:pointer;line-height:1.5;font-weight:700}
+.remember-login-label input{height:20px;width:20px;margin:0!important;flex-shrink:0;accent-color:#98713e}
+.remember-login-label span{flex:1}
+.login-remember-note{font-size:11px!important;color:#776b60!important;line-height:1.6!important;margin:6px 0 14px!important;text-align:start!important}

@@ -6,11 +6,19 @@ function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('d
 $('ownerExport').onclick=()=>{window.location.href='/api/owner/export.csv'};
 $('ownerRefresh').onclick=()=>loadAll();
 let currentChallenge=null;
+$('showPassword').onclick=()=>{
+ const button=$('showPassword'),password=$('password'),show=password.type==='password';
+ password.type=show?'text':'password';
+ button.textContent=show?'إخفاء':'إظهار';
+ button.setAttribute('aria-label',show?'إخفاء كلمة المرور':'إظهار كلمة المرور');
+ button.setAttribute('aria-pressed',String(show));
+};
+
 function otpStep(challenge){currentChallenge=challenge;$('loginForm').classList.add('hidden');$('verifyForm').classList.remove('hidden');$('otpCode').focus()}
 function resetLoginStep(){currentChallenge=null;$('loginForm').classList.remove('hidden');$('verifyForm').classList.add('hidden');$('otpCode').value='';$('password').value=''}
 $('backToLogin').onclick=()=>{resetLoginStep();$('loginError').textContent=''};
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginError').textContent='';$('loginBtn').disabled=true;try{
- const out=await api('/api/owner/login','POST',{username:$('username').value,password:$('password').value});
+ const out=await api('/api/owner/login','POST',{username:$('username').value.trim(),password:$('password').value,remember:$('rememberLogin').checked});
  if(out.requires_verification){otpStep(out.challenge_id);$('loginError').textContent=out.message||'أدخل رمز التحقق المرسل إلى هاتف المالك';return}
  resetLoginStep();loginVisible(false);await loadAll()
  }catch(e){errtxt('loginError',e.message)}finally{$('loginBtn').disabled=false}};

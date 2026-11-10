@@ -174,6 +174,7 @@ def init():
         ''')
 
         add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
+        add_column(d,'login_challenges','remember','INTEGER NOT NULL DEFAULT 0')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
         # Apply this requested price change once per database. Later owner edits remain intact.
         d.execute("CREATE TABLE IF NOT EXISTS site_migrations (key TEXT PRIMARY KEY)")
@@ -430,8 +431,10 @@ class Handler(BaseHTTPRequestHandler):
             return data if isinstance(data,dict) else None
         except (ValueError,UnicodeError):return None
     def secure_suffix(self):return '; Secure' if os.environ.get('FORCE_HTTPS')=='1' or self.headers.get('X-Forwarded-Proto')=='https' else ''
-    def token(self,role,staff_id=None):
-        expires=str(int(time.time()+12*3600))
+    def token(self,role,staff_id=None,remember=False):
+        # Long-lived sign-in is opt-in and never stores a password on the client.
+        lifetime=(30*24*3600 if role=='staff' else 7*24*3600) if remember else 12*3600
+        expires=str(int(time.time()+lifetime))
         parts=[role,expires]
         if role=='staff':
             with con() as d:
@@ -461,8 +464,9 @@ class Handler(BaseHTTPRequestHandler):
                 return bool(account and account['enabled'] and account['session_version']==int(parts[3]))
             return True
         except (ValueError,TypeError):return False
-    def login_cookie(self,role,staff_id=None):
-        return ('Set-Cookie',f'hw67_{role}={self.token(role,staff_id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200'+self.secure_suffix())
+    def login_cookie(self,role,staff_id=None,remember=False):
+        lifetime=(30*24*3600 if role=='staff' else 7*24*3600) if remember else 12*3600
+        return ('Set-Cookie',f'hw67_{role}={self.token(role,staff_id,remember)}; Path=/; HttpOnly; SameSite=Strict; Max-Age={lifetime}'+self.secure_suffix())
     def login_rate_check(self,role):
         key=(role,self.client_address[0]);now_t=time.time()
         with LOCK:
@@ -675,7 +679,9 @@ class Handler(BaseHTTPRequestHandler):
             role=match.group(1)
             if not SECRET:return self.sendj(503,{'error':'إعدادات أمان السيرفر غير مكتملة'})
             if not self.login_rate_check(role):return self.sendj(429,{'error':'محاولات كثيرة، حاول لاحقاً'})
-            username=data.get('username');password=data.get('password')
+            username=data.get('username');password=data.get('password');remember=data.get('remember',False)
+            if type(remember)!=bool:
+                return self.sendj(400,{'error':'إعداد تذكر الدخول غير صحيح'})
             if not isinstance(username,str) or not isinstance(password,str) or len(username)>80 or len(password)>256:
                 return self.sendj(401,{'error':'بيانات الدخول غير صحيحة'})
             staff_id=None
@@ -704,8 +710,8 @@ class Handler(BaseHTTPRequestHandler):
                     # Limit one outstanding code per identity and limit repeated sends via login rate checks.
                     d.execute('DELETE FROM login_challenges WHERE role=? AND username=?',(role,username))
                     challenge=secrets.token_urlsafe(28)
-                    d.execute('INSERT INTO login_challenges(id,role,username,staff_id,expires_at) VALUES(?,?,?,?,?)',
-                        (challenge,role,username,staff_id,int(time.time())+600))
+                    d.execute('INSERT INTO login_challenges(id,role,username,staff_id,expires_at,remember) VALUES(?,?,?,?,?,?)',
+                        (challenge,role,username,staff_id,int(time.time())+600,int(remember)))
                 if method=='sms':
                     try:
                         if not send_owner_sms():raise RuntimeError('تعذر إرسال رمز SMS')
@@ -717,7 +723,7 @@ class Handler(BaseHTTPRequestHandler):
             # SMS may be disabled only by the operator for trusted local testing.
             if role=='staff':
                 with con() as d:d.execute('UPDATE staff_accounts SET last_login_at=? WHERE id=?',(utcnow(),staff_id))
-            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id)])
+            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id,remember)])
         match=re.fullmatch(r'/api/(staff|owner)/verify',path)
         if match:
             role=match.group(1)
@@ -751,7 +757,7 @@ class Handler(BaseHTTPRequestHandler):
                     d.execute('INSERT OR REPLACE INTO security_state(key,value) VALUES(?,?)',('owner_totp_last_step',str(matched)))
                     d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
                     d.commit()
-                return self.sendj(200,{'ok':True},[self.login_cookie('owner')])
+                return self.sendj(200,{'ok':True},[self.login_cookie('owner',remember=bool(c['remember']))])
             if not twilio_ready():return self.sendj(503,{'error':'خدمة التحقق غير متاحة'})
             try:approved=check_owner_sms(code)
             except RuntimeError:return self.sendj(503,{'error':'تعذر فحص رمز التحقق، حاول لاحقاً'})
@@ -759,7 +765,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK,con() as d:
                 d.execute('DELETE FROM login_challenges WHERE id=?',(challenge,))
                 if role=='staff':d.execute('UPDATE staff_accounts SET last_login_at=? WHERE id=?',(utcnow(),staff_id))
-            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id)])
+            return self.sendj(200,{'ok':True},[self.login_cookie(role,staff_id,bool(c['remember']))])
         match=re.fullmatch(r'/api/(staff|owner)/logout',path)
         if match:
             role=match.group(1)
