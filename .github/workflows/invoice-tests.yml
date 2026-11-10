@@ -19,4 +19,6 @@ jobs:
       - run: python -m py_compile server.py durable_sqlite.py tests/test_invoice_workflow.py
       - run: node --check static/admin-common.js && node --check static/staff.js && node --check static/owner.js && node --check static/app.js
       - run: node --check static/i18n.js && node tests/test_language.js
+      - run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26
+      - run: node tests/test_staff_product_picker.cjs
       - run: python -m unittest discover -s tests -v
