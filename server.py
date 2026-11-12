@@ -212,14 +212,19 @@ def init():
             d.execute('UPDATE products SET price_fils=1200 WHERE id=?',('nutella',))
             d.execute('UPDATE products SET price_fils=1300,name=? WHERE id=?',('كرواسون جبس جبن','chips'))
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(menu_key,))
-        # Acai smoothie is a regular 25 AED menu item; the closing-hour promotion is conditional.
+        # Acai smoothie is 20 AED normally and 15 AED in the last-hour offer.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,1)",
-                  ('acai_smoothie','سموذي أساي','Cold Drinks',2500,'acai-original-white.jpg'))
+                  ('acai_smoothie','سموذي أساي','Cold Drinks',2000,'acai-original-white.jpg'))
         if not d.execute("SELECT 1 FROM promos WHERE product_id='acai_smoothie' AND mode='last_hour'").fetchone():
             d.execute("""INSERT INTO promos(title,subtitle,product_id,mode,days,start_time,end_time,discount_percent,enabled)
                          VALUES(?,?,?,?,?,?,?,?,1)""",
-                      ('خصم مميز - آخر ساعة','سموذي أساي — 15 بدل 25 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',40))
-        d.execute("UPDATE promos SET title='خصم مميز - آخر ساعة' WHERE product_id='acai_smoothie' AND mode='last_hour'")
+                      ('خصم مميز - آخر ساعة','سموذي أساي — 15 بدل 20 درهم','acai_smoothie','last_hour','[0,1,2,3,4,5,6]','00:00','23:59',25))
+        # Apply the owner's November 12 price change once, without resetting later edits.
+        acai_price_key='acai_20_aed_20261112'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(acai_price_key,)).fetchone():
+            d.execute("UPDATE products SET price_fils=2000,discount_percent=0 WHERE id='acai_smoothie'")
+            d.execute("UPDATE promos SET discount_percent=25,subtitle='سموذي أساي — 15 بدل 20 درهم' WHERE product_id='acai_smoothie' AND mode='last_hour'")
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(acai_price_key,))
         # The initial photo replacement runs once, then all owner photo edits are preserved.
         acai_image_key='acai_original_photo_one_time_2026_11_08'
         if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(acai_image_key,)).fetchone():
