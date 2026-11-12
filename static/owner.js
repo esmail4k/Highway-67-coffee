@@ -107,10 +107,10 @@ async function loadOwnerReviews(){
    missing:'ناقص منتج أو إضافة',presentation:'الشكل يحتاج تحسين',other:'سبب آخر'};
   el.innerHTML=ownerReviews.length?ownerReviews.map(x=>{
    const mood=x.liked===1?' أعجبهم':x.liked===0?' يحتاج تحسين':'— بدون تقييم للطعم';
-   const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
+   const stars=x.rating_score?x.rating_score+'/10':x.service_score?x.service_score+'/5':'—';
    const tags=(x.reasons||[]).map(t=>reasons[t]||t).join(' · ');
    return `<article class="owner-review"><div class="header"><b>طلب #${Number(x.order_id)} · ${mood}</b><small>${when(x.created_at)}</small></div>
-   <p>الخدمة: <span class="stars">${stars}</span></p>${tags?'<p>'+safe(tags)+'</p>':''}
+   <p>تقييم الطلب: <span class="stars">${stars}</span></p>${tags?'<p>'+safe(tags)+'</p>':''}
    ${x.comment?'<p>'+safe(x.comment)+'</p>':'<p>الزبون ما أضاف ملاحظة</p>'}</article>`;
   }).join(''):'<div class="empty">لا توجد تقييمات حتى الآن.</div>';
  }catch(e){el.innerHTML='<div class="empty">'+safe(e.message)+'</div>'}

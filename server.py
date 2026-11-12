@@ -173,6 +173,7 @@ def init():
             comment TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
         ''')
 
+        add_column(d,'order_feedback','rating_score','INTEGER CHECK(rating_score BETWEEN 1 AND 10 OR rating_score IS NULL)')
         add_column(d,'staff_accounts','session_version','INTEGER NOT NULL DEFAULT 1')
         add_column(d,'login_challenges','remember','INTEGER NOT NULL DEFAULT 0')
         d.executemany('INSERT OR IGNORE INTO products(id,name,category,price_fils,image) VALUES(?,?,?,?,?)',[(pid,name,cat,round(price*100),image) for pid,name,cat,price,image in SEED])
@@ -569,7 +570,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.auth('staff'):return
             with con() as d:
                 rows=[dict(x) for x in d.execute(
-                    'SELECT order_id,liked,reasons,service_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 40')]
+                    'SELECT order_id,liked,reasons,service_score,rating_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 40')]
                 for x in rows:x['reasons']=json.loads(x['reasons'])
             return self.sendj(200,{'feedback':rows})
         if path=='/api/staff/shifts':
@@ -611,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.auth('owner'):return
             with con() as d:
                 feedback=[dict(x) for x in d.execute(
-                  'SELECT order_id,liked,reasons,service_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 100')]
+                  'SELECT order_id,liked,reasons,service_score,rating_score,comment,created_at FROM order_feedback ORDER BY order_id DESC LIMIT 100')]
             for row in feedback:row['reasons']=json.loads(row['reasons'])
             return self.sendj(200,{'feedback':feedback})
         if path=='/api/owner/products':
@@ -854,18 +855,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.sendj(429,{'error':'حاول مرة ثانية بعد قليل'})
             order_id=data.get('order_id');token=data.get('feedback_token')
             liked=data.get('liked');reasons=data.get('reasons',[])
-            score=data.get('service_score');comment=data.get('comment','')
+            score=data.get('service_score');rating=data.get('rating_score')
+            comment=data.get('comment','')
             if (type(order_id)!=int or order_id<1 or not isinstance(token,str) or len(token)>160
                     or (liked is not None and type(liked)!=bool) or not isinstance(reasons,list)
                     or len(reasons)>5 or not isinstance(comment,str) or len(comment)>240
-                    or (score is not None and (type(score)!=int or not 1<=score<=5))):
+                    or (score is not None and (type(score)!=int or not 1<=score<=5))
+                    or (rating is not None and (type(rating)!=int or not 1<=rating<=10))):
                 return self.sendj(400,{'error':'الرجاء مراجعة التقييم'})
             choices={'too_sweet','not_hot','taste','missing','presentation','other'}
             if any(not isinstance(t,str) or t not in choices for t in reasons) or len(set(reasons))!=len(reasons):
                 return self.sendj(400,{'error':'خيار التقييم غير صحيح'})
-            if liked is not False and reasons:
-                return self.sendj(400,{'error':'أسباب عدم الرضا تظهر عند اختيار لم يعجبني'})
-            if liked is None and score is None and not comment.strip():
+            if rating is not None and liked is not None and liked!=(rating>=7):
+                return self.sendj(400,{'error':'بيانات التقييم غير متوافقة'})
+            if (liked is not False and reasons) or (rating is not None and rating>6 and reasons):
+                return self.sendj(400,{'error':'التحسينات تظهر فقط للتقييمات المنخفضة'})
+            if liked is None and score is None and rating is None and not comment.strip():
                 return self.sendj(400,{'error':'اختر تقييم واحد على الأقل'})
             digest=hashlib.sha256(token.encode()).hexdigest()
             with LOCK,con() as d:
@@ -875,8 +880,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.sendj(403,{'error':'رابط التقييم غير صالح'})
                 if d.execute('SELECT 1 FROM order_feedback WHERE order_id=?',(order_id,)).fetchone():
                     return self.sendj(409,{'error':'تم تسجيل تقييمك بالفعل'})
-                d.execute('INSERT INTO order_feedback(order_id,liked,reasons,service_score,comment,created_at) VALUES(?,?,?,?,?,?)',
-                          (order_id,int(liked) if liked is not None else None,json.dumps(reasons),score,comment.strip(),utcnow()))
+                d.execute('INSERT INTO order_feedback(order_id,liked,reasons,service_score,rating_score,comment,created_at) VALUES(?,?,?,?,?,?,?)',
+                          (order_id,int(liked) if liked is not None else None,json.dumps(reasons),score,rating,comment.strip(),utcnow()))
                 d.execute('DELETE FROM order_feedback_tokens WHERE order_id=?',(order_id,))
                 d.commit()
             return self.sendj(201,{'ok':True})
