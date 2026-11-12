@@ -286,9 +286,9 @@ async function loadFeedback(){
   list.innerHTML=entries.length?entries.map(x=>{
    const feeling=x.liked===1?' أعجبهم':x.liked===0?' يحتاج تحسين':'— بدون تقييم للطعم';
    const reasons=(x.reasons||[]).map(r=>feedbackReasonNames[r]||r).join(' · ');
-   const stars=x.service_score?'★'.repeat(x.service_score)+'☆'.repeat(5-x.service_score):'—';
+   const stars=x.rating_score?x.rating_score+'/10':x.service_score?x.service_score+'/5':'—';
    return `<article class="review-item"><div class="review-head"><strong>#${Number(x.order_id)} · ${feeling}</strong><small>${when(x.created_at)}</small></div>
-    <p><b>الخدمة:</b> <span class="review-stars">${stars}</span></p>
+    <p><b>تقييم الطلب:</b> <span class="review-stars">${stars}</span></p>
     ${reasons?`<p>${safe(reasons)}</p>`:''}
     <p>${x.comment?safe(x.comment):'الزبون ما أضاف ملاحظة'}</p></article>`;
   }).join(''):'<div class="empty">لا توجد تقييمات حتى الآن.</div>';
