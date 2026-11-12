@@ -22,4 +22,5 @@ jobs:
       - run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26
       - run: node tests/test_staff_product_picker.cjs
       - run: node tests/test_optional_feedback.cjs
+      - run: node tests/test_login_quantity.cjs
       - run: python -m unittest discover -s tests -v
