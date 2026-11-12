@@ -347,4 +347,49 @@ class InvoiceWorkflowTest(unittest.TestCase):
         product=next(p for p in menu['products'] if p['id']==product_id)
         self.assertEqual(product['image'],filename)
 
+
+    def test_optional_ten_point_review_for_completed_order(self):
+        code,session=self.request(self.staff,'POST','/api/staff/login',
+            {'username':'test-staff','password':'test-staff-strong-password'})
+        self.assertEqual(code,200,session)
+        code,shift=self.request(self.customer,'GET','/api/shift')
+        self.assertEqual(code,200)
+        if not shift['open']:
+            code,started=self.request(self.staff,'POST','/api/staff/shift/start',{})
+            self.assertEqual(code,200,started)
+        code,order=self.request(self.customer,'POST','/api/orders',{
+            'customer_name':'Review customer','phone':'0501234567','car_plate':'ABC 234',
+            'notes':'','items':[{'id':'cap','qty':1}]})
+        self.assertEqual(code,201,order)
+        self.assertIn('feedback_token',order)
+        payload={'order_id':order['id'],'feedback_token':order['feedback_token'],
+                 'rating_score':9,'liked':True,'reasons':[],
+                 'service_score':None,'comment':'Good cappuccino'}
+        invalid=dict(payload,rating_score=11)
+        code,_=self.request(self.customer,'POST','/api/feedback',invalid)
+        self.assertEqual(code,400)
+        code,good=self.request(self.customer,'POST','/api/feedback',payload)
+        self.assertEqual(code,201,good)
+        code,again=self.request(self.customer,'POST','/api/feedback',payload)
+        self.assertIn(code,(403,409))
+        code,rows=self.request(self.staff,'GET','/api/staff/feedback')
+        self.assertEqual(code,200,rows)
+        record=next(x for x in rows['feedback'] if x['order_id']==order['id'])
+        self.assertEqual(record['rating_score'],9)
+        self.assertEqual(record['comment'],'Good cappuccino')
+
+        code,other=self.request(self.customer,'POST','/api/orders',{
+            'customer_name':'Review customer','phone':'0501234567','car_plate':'ABC 235',
+            'notes':'','items':[{'id':'cap','qty':1}]})
+        self.assertEqual(code,201,other)
+        payload={'order_id':other['id'],'feedback_token':other['feedback_token'],
+                 'rating_score':3,'liked':False,'reasons':['too_sweet','taste'],
+                 'service_score':None,'comment':'Less sweet please'}
+        code,saved=self.request(self.customer,'POST','/api/feedback',payload)
+        self.assertEqual(code,201,saved)
+        code,rows=self.request(self.staff,'GET','/api/staff/feedback')
+        record=next(x for x in rows['feedback'] if x['order_id']==other['id'])
+        self.assertEqual(record['rating_score'],3)
+        self.assertEqual(record['reasons'],['too_sweet','taste'])
+
 if __name__=='__main__':unittest.main()
