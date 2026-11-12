@@ -144,3 +144,29 @@ html[dir="ltr"] .wrap,html[dir="ltr"] .loginScreen{text-align:left}
 .staff-confirm-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
 .staff-confirm-actions .button{flex:1;min-height:46px}
 @media(max-width:540px){.staff-confirm-dialog{width:calc(100vw - 28px);padding:24px 17px}.staff-confirm-actions .button{min-width:125px;font-size:13px}}
+
+/* Universal quick navigation between protected staff and owner sign-in pages. */
+.role-login-menu{position:relative;z-index:35;flex-shrink:0}
+.role-login-menu summary{list-style:none;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #dfc9ab;border-radius:10px;background:#fff8ec;color:#75512d;padding:9px 12px;font-size:12px;font-weight:850;min-height:37px;white-space:nowrap;cursor:pointer}
+.role-login-menu summary::-webkit-details-marker{display:none}
+.role-login-menu summary:after{content:"";width:6px;height:6px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:rotate(45deg);margin-top:-3px}
+.role-login-menu[open] summary:after{transform:rotate(225deg);margin-top:4px}
+.role-login-options{position:absolute;inset-inline-end:0;top:calc(100% + 8px);border:1px solid #e2d5c2;background:white;border-radius:12px;padding:6px;box-shadow:0 10px 25px #38251124;min-width:163px;display:grid;gap:2px}
+.role-login-options a{display:block;border-radius:8px;padding:12px 13px;font-weight:800;font-size:12px;color:#4a3020;white-space:nowrap}
+.role-login-options a:hover,.role-login-options a:focus-visible{background:#f4e9dc}
+.billitem .name .bill-quantity{display:block;font-size:12px;color:#76553a;margin:6px 0 0;font-weight:700}
+.bill-qty-label{font-size:11px;color:#766453;font-weight:800;display:block;flex-basis:100%;text-align:center}
+.billitem .cost{display:flex;flex-direction:column;align-items:flex-end;min-width:105px;gap:5px}
+.billitem .bill-row-total{font:bold 16px Arial,sans-serif;white-space:nowrap;direction:ltr}
+.bill-item-controls{max-width:205px}
+.bill-item-controls b{min-width:23px;text-align:center}
+@media(max-width:650px){
+ .role-login-menu summary{font-size:11px;padding:7px 8px;min-height:33px}
+ .headtools{gap:5px}
+ .billitem .cost{min-width:88px}
+ .billitem .bill-row-total{font-size:14px}
+}
+@media(max-width:400px){
+ .role-login-menu summary{font-size:10px;padding:6px}
+ .headtools .button.sm{font-size:10px;padding:6px}
+}
