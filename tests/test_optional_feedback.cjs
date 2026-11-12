@@ -27,10 +27,11 @@ function waitUntil(pred,timeout=2500){
  });
 }
 async function main(){
- window.eval(fs.readFileSync('static/app.js','utf8'));
+ window.eval(fs.readFileSync('static/app.js','utf8')+
+  '\nwindow.__reviewTest={setOrder:(id,token)=>{feedbackToken=token;feedbackOrderId=id;resetFeedback();rememberPendingReview();step("success")},refresh:()=>refreshReviewReminder()};');
  const $=id=>document.getElementById(id);
  assert.equal($('reviewReminder').hidden,true);
- window.eval("feedbackToken='review-test-token-long-string';feedbackOrderId=25;resetFeedback();rememberPendingReview();step('success');");
+ window.__reviewTest.setOrder(25,'review-test-token-long-string');
  assert.equal($('feedbackCard').hidden,true,'Review should not block checkout confirmation');
  assert.equal($('reviewOptionalIntro').hidden,false);
  $('openFeedback').click();
@@ -49,12 +50,12 @@ async function main(){
  assert.equal(lastPayload.liked,false);
  assert.equal(window.localStorage.getItem('highway67_pending_review_v2'),null);
 
- window.eval("feedbackToken='another-pending-test-token';feedbackOrderId=26;resetFeedback();rememberPendingReview();");
+ window.__reviewTest.setOrder(26,'another-pending-test-token');
  $('openFeedback').click();
  $('skipFeedback').click();
  assert.equal(feedbackCalls,1,'Skipping must never submit feedback');
  assert.ok(window.localStorage.getItem('highway67_pending_review_v2'),'Skipped review remains optional');
- window.eval("refreshReviewReminder();");
+ window.__reviewTest.refresh();
  assert.equal($('reviewReminder').hidden,false);
  $('resumeReview').click();
  assert.equal($('feedbackCard').hidden,false);
