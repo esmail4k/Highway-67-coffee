@@ -15,7 +15,7 @@ const {window}=dom,document=window.document;
 window.setInterval=()=>0; // No background polling in the test.
 window.alert=message=>{throw Error('Unexpected alert: '+message)};
 window.confirm=()=>true;
-let requests=[];
+let requests=[],shiftOpen=true,cancelled=false;
 let order={
  id:17,status:'new',created_at:'2026-11-10T07:00:00Z',
  customer_name:'Test Guest',phone:'0500000000',car_plate:'123',
@@ -33,12 +33,19 @@ window.fetch=async function(path,options={}){
  requests.push({path,method,body:options.body?JSON.parse(options.body):null});
  let data,status=200;
  if(path==='/api/staff/session')data={authenticated:true};
- else if(path==='/api/shift')data={open:true,orders_enabled:true};
+ else if(path==='/api/shift')data={open:shiftOpen,orders_enabled:true};
  else if(path==='/api/staff/overview')data={
-  shift:{id:1,local_date:'2026-11-10',ended_at:null},
-  counts:{new:1,ready:0,delivered:0,cancelled:0},
-  sales_fils:0,total_orders:1,orders:[order],top_products:[]
+  shift:shiftOpen?{id:1,local_date:'2026-11-10',ended_at:null}:null,
+  counts:{new:!cancelled&&shiftOpen?1:0,ready:0,delivered:0,cancelled:0},
+  sales_fils:0,total_orders:cancelled?0:1,orders:cancelled?[]:[order],top_products:[]
  };
+ else if(path==='/api/staff/orders/17/delete'&&method==='POST'){
+  const body=JSON.parse(options.body);
+  if(body.confirmation!=='DELETE 17')throw Error('Invalid cancellation proof');
+  cancelled=true;data={ok:true};
+ }
+ else if(path==='/api/staff/shift/end'&&method==='POST'){shiftOpen=false;data={ok:true};}
+ else if(path==='/api/staff/shift/start'&&method==='POST'){shiftOpen=true;data={ok:true};}
  else if(path==='/api/products')data={products:[acai],promotions:[]};
  else if(path==='/api/staff/orders/17/items/add'&&method==='POST'){
   const body=JSON.parse(options.body);
@@ -107,6 +114,36 @@ async function main(){
  await waitUntil(()=>document.getElementById('addItemModal').classList.contains('show')===false);
  await waitUntil(()=>document.querySelector('#orders .billtotal')?.textContent.includes('44 AED'));
  assert.equal(order.total_fils,4400);
- console.log('Staff invoice picker: search, picture, price, quantity, extras, submit and total passed');
+ // Cancel should NEVER send a request after choosing No.
+ let cancel=document.querySelector('[data-delete-staff-order="17"]');
+ assert.ok(cancel);
+ cancel.click();
+ assert.equal(document.getElementById('staffConfirmModal').classList.contains('show'),true);
+ assert.equal(document.getElementById('staffConfirmYes').textContent,'نعم، إلغاء الفاتورة');
+ document.getElementById('staffConfirmNo').click();
+ assert.equal(requests.filter(x=>x.path==='/api/staff/orders/17/delete').length,0);
+ assert.equal(cancelled,false);
+ // Confirm Yes sends the actual cancellation request.
+ cancel=document.querySelector('[data-delete-staff-order="17"]');
+ cancel.click();
+ document.getElementById('staffConfirmYes').click();
+ await waitUntil(()=>cancelled);
+ await waitUntil(()=>document.getElementById('orders').textContent.includes('لا توجد طلبات'));
+ assert.equal(requests.filter(x=>x.path==='/api/staff/orders/17/delete').length,1);
+ // Ending the shift also requires explicit yes.
+ document.getElementById('endBtn').click();
+ await waitUntil(()=>document.getElementById('staffConfirmModal').classList.contains('show'));
+ document.getElementById('staffConfirmNo').click();
+ assert.equal(shiftOpen,true);
+ assert.equal(requests.filter(x=>x.path==='/api/staff/shift/end').length,0);
+ document.getElementById('endBtn').click();
+ document.getElementById('staffConfirmYes').click();
+ await waitUntil(()=>!shiftOpen);
+ await waitUntil(()=>document.getElementById('startBtn').classList.contains('hidden')===false);
+ document.getElementById('startBtn').click();
+ await waitUntil(()=>document.getElementById('staffConfirmModal').classList.contains('show'));
+ document.getElementById('staffConfirmYes').click();
+ await waitUntil(()=>shiftOpen);
+ console.log('Staff product picker, cancel/confirm and start/end shift passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
