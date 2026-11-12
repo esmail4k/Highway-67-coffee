@@ -392,4 +392,23 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertEqual(record['rating_score'],3)
         self.assertEqual(record['reasons'],['too_sweet','taste'])
 
+
+    def test_acai_price_is_20_with_15_last_hour_offer(self):
+        import sqlite3
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        acai=next(p for p in menu['products'] if p['id']=='acai_smoothie')
+        self.assertEqual(acai['price_fils'],2000)
+        self.assertEqual(acai['discount_percent'],0)
+        self.assertIn(acai['final_price_fils'],(2000,1500))
+        with sqlite3.connect(Path(self.tmp.name)/'highway67.sqlite3') as db:
+            promo=db.execute(
+                "SELECT discount_percent,subtitle FROM promos WHERE product_id='acai_smoothie' AND mode='last_hour'"
+            ).fetchone()
+            self.assertIsNotNone(promo)
+            self.assertEqual(promo[0],25)
+            self.assertIn('15 بدل 20',promo[1])
+            migration=db.execute("SELECT 1 FROM site_migrations WHERE key='acai_20_aed_20261112'").fetchone()
+            self.assertIsNotNone(migration)
+
 if __name__=='__main__':unittest.main()
