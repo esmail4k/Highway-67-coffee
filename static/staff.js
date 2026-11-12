@@ -1,6 +1,35 @@
 'use strict';
 let data=null,selectedPage='live',selectedState='all',loadedShift=null,updating=false;
 let feedbackLoaded=false,stockItems=[],stockLoading=false;
+// Always use in-page confirmation for staff actions; native browser prompts can be blocked.
+let staffDialogResolve=null, staffDialogPreviousFocus=null;
+function staffDialogFinish(approved){
+ if(!staffDialogResolve)return;
+ const resolve=staffDialogResolve;
+ staffDialogResolve=null;
+ $('staffConfirmModal').classList.remove('show');
+ if(staffDialogPreviousFocus&&staffDialogPreviousFocus.isConnected)staffDialogPreviousFocus.focus();
+ resolve(approved);
+}
+function staffAsk({title,message,details='',confirmText='نعم، تأكيد',danger=false}){
+ if(staffDialogResolve)return Promise.resolve(false);
+ staffDialogPreviousFocus=document.activeElement;
+ $('staffConfirmTitle').textContent=title;
+ $('staffConfirmMessage').textContent=message;
+ $('staffConfirmInfo').textContent=details;
+ $('staffConfirmInfo').hidden=!details;
+ $('staffConfirmYes').textContent=confirmText;
+ $('staffConfirmYes').classList.toggle('red',danger);
+ $('staffConfirmModal').classList.add('show');
+ $('staffConfirmNo').focus();
+ return new Promise(resolve=>{staffDialogResolve=resolve});
+}
+$('staffConfirmNo').onclick=()=>staffDialogFinish(false);
+$('staffConfirmYes').onclick=()=>staffDialogFinish(true);
+$('staffConfirmModal').onclick=e=>{if(e.target===$('staffConfirmModal'))staffDialogFinish(false)};
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&staffDialogResolve){e.preventDefault();staffDialogFinish(false)}
+});
 function loginVisible(yes){$('loginScreen').classList.toggle('hidden',!yes);$('dashboard').classList.toggle('hidden',yes);$('logout').classList.toggle('hidden',yes);$('exportOrders').classList.toggle('hidden',yes)}
 $('exportOrders').onclick=()=>{window.location.href='/api/staff/export.csv'};
 let currentChallenge=null;
@@ -57,7 +86,7 @@ async function bindStaffInvoiceControls(){
  });
  document.querySelectorAll('[data-remove-item]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.removeItem),item=Number(b.dataset.item);
-  if(!uiConfirm('حذف هذا المنتج من الفاتورة؟'))return;
+  if(!await staffAsk({title:'حذف منتج من الفاتورة',message:'هل تريد حذف هذا المنتج من الفاتورة؟',details:'الإجمالي يتحدث تلقائياً، والفواتير السابقة ما تتأثر.',confirmText:'نعم، احذف المنتج',danger:true}))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/items/'+item+'/remove','POST',{});await refresh()}
   catch(e){uiAlert(e.message)}finally{b.disabled=false}
@@ -65,7 +94,7 @@ async function bindStaffInvoiceControls(){
  document.querySelectorAll('[data-add-item]').forEach(b=>b.onclick=()=>openInvoiceProductPicker(Number(b.dataset.addItem)));
  document.querySelectorAll('[data-delete-staff-order]').forEach(b=>b.onclick=async()=>{
   const id=Number(b.dataset.deleteStaffOrder);
-  if(!uiConfirm('إلغاء الفاتورة #'+id+' وإزالتها من شاشة الموظفين والمبيعات؟ المدير يقدر يسترجعها.'))return;
+  if(!await staffAsk({title:'إلغاء الفاتورة #'+id,message:'هل تريد إلغاء هذه الفاتورة؟',details:'تختفي من الطلبات النشطة والمبيعات. يقدر المدير يسترجعها من سجلاته.',confirmText:'نعم، إلغاء الفاتورة',danger:true}))return;
   b.disabled=true;
   try{await api('/api/staff/orders/'+id+'/delete','POST',{confirmation:'DELETE '+id});await refresh()}
   catch(e){uiAlert(e.message)}finally{b.disabled=false}
@@ -208,11 +237,29 @@ $('addItemForm').onsubmit=async e=>{
 };
 async function advance(id,state){try{await api(`/api/staff/orders/${id}/status`,'POST',{status:state});await refresh()}catch(e){uiAlert(e.message)}}
 function showLive(){selectedPage='live';selectedState='all';document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page==='live'));document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x.dataset.state==='all'));$('livePage').classList.remove('hidden');$('archivePage').classList.add('hidden');$('reviewsPage').classList.add('hidden');$('stockPage').classList.add('hidden')}
-$('startBtn').onclick=async()=>{try{await api('/api/staff/shift/start','POST',{});showLive();await refresh()}catch(e){uiAlert(e.message)}};
-$('endBtn').onclick=async()=>{const b=$('endBtn');b.disabled=true;try{
- await api('/api/staff/shift/end','POST',{});
- showLive();data=null;await refresh();
- }catch(e){$('refreshLabel').textContent=e.message;uiAlert(e.message)}finally{b.disabled=false}};
+$('startBtn').onclick=async()=>{
+ const today=new Intl.DateTimeFormat('ar-AE',{timeZone:'Asia/Dubai',dateStyle:'full'}).format(new Date());
+ if(!await staffAsk({title:'بدء يوم عمل جديد',message:'هل تريد فتح يوم عمل جديد؟',details:'التاريخ: '+today+' — يتم إنشاء وردية جديدة من دون حذف سجلات الأيام السابقة.',confirmText:'نعم، بدء اليوم'}))return;
+ const b=$('startBtn');b.disabled=true;
+ try{await api('/api/staff/shift/start','POST',{});showLive();data=null;await refresh()}
+ catch(e){$('refreshLabel').textContent=e.message;uiAlert(e.message)}
+ finally{b.disabled=false}
+};
+$('endBtn').onclick=async()=>{
+ const pending=Number(data?.counts?.new||0)+Number(data?.counts?.ready||0);
+ if(pending){
+  await staffAsk({title:'لا يمكن إنهاء اليوم الآن',message:'توجد '+pending+' طلبات لم تُسلّم بعد.',details:'سلّم الطلبات أو ألغِها قبل إغلاق الوردية.',confirmText:'فهمت'});
+  return;
+ }
+ const total=fmt(data?.sales_fils||0);
+ if(!await staffAsk({title:'إنهاء يوم العمل',message:'هل أنت متأكد من إنهاء الوردية الحالية؟',details:'مبيعات الطلبات المُسلّمة: '+total+'. يبقى سجل اليوم محفوظاً للمدير.',confirmText:'نعم، إنهاء اليوم',danger:true}))return;
+ const b=$('endBtn');b.disabled=true;
+ try{
+  await api('/api/staff/shift/end','POST',{});
+  showLive();data=null;await refresh();
+ }catch(e){$('refreshLabel').textContent=e.message;uiAlert(e.message)}
+ finally{b.disabled=false}
+};
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{selectedPage=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));$('livePage').classList.toggle('hidden',selectedPage!=='live');$('archivePage').classList.toggle('hidden',selectedPage!=='archive');$('reviewsPage').classList.toggle('hidden',selectedPage!=='reviews');$('stockPage').classList.toggle('hidden',selectedPage!=='stock');if(selectedPage==='reviews')loadFeedback();if(selectedPage==='stock')loadStock();render()});
 document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('[data-state]').forEach(x=>x.classList.toggle('active',x===b));render()});
 function modal(open){$('archiveModal').classList.toggle('show',open)}$('closeModal').onclick=()=>modal(false);$('archiveModal').onclick=e=>{if(e.target===$('archiveModal'))modal(false)};
@@ -221,7 +268,7 @@ document.querySelectorAll('[data-mtab]').forEach(b=>b.onclick=()=>{document.quer
 $('modalEdit').onsubmit=async e=>{e.preventDefault();if(!loadedShift)return;try{await api(`/api/staff/shifts/${loadedShift.shift.id}/edit`,'POST',{label:$('shiftLabel').value,notes:$('shiftNotes').value});modal(false);await refresh()}catch(e){$('modalError').textContent=e.message}};
 async function hideShift(id,b){
  b=b||$('hideShift');
- if(b.dataset.confirmHide!=='yes'){b.dataset.confirmHide='yes';b.textContent='تأكيد الإخفاء';return}
+ if(!await staffAsk({title:'إخفاء سجل يوم',message:'هل تريد إخفاء هذا اليوم من شاشة الموظفين؟',details:'المدير بيقدر يشوف السجل ويسترجعه.',confirmText:'نعم، إخفاء',danger:true}))return;
  try{await api(`/api/staff/shifts/${id}/hide`,'POST',{});modal(false);await refresh()}catch(e){uiAlert(e.message)}
 };
 $('hideShift').onclick=()=>{if(loadedShift)hideShift(loadedShift.shift.id,$('hideShift'))};
