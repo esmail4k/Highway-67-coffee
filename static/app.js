@@ -267,7 +267,7 @@ $('checkoutForm').onsubmit=async e=>{
   const payload={quick:true,request_id:quickRequestId,items};
   const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
-  quickOrderId=result.id;quickOrderToken=result.feedback_token;
+  quickOrderId=result.id;quickOrderToken=result.details_token;
   $('orderNumber').textContent='#'+result.id;
   $('receiptText').textContent='الإجمالي '+money(result.total_fils)+' — تم إرسال الطلب إلى الموظفين.';
   $('optionalOrderDetails').open=false;
