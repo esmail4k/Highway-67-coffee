@@ -194,6 +194,22 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
  .cart-line .cartPreview img{width:43px;height:49px}
  .cart-line-total{font-size:14px}
 }
+
+/* Per-product options: hiding syrup must override the grid display rule. */
+.syrup-options[hidden],.acai-banana-options[hidden],.custom-extra-options[hidden],#customCaramelPrice[hidden]{display:none!important}
+.acai-banana-options{border:0;margin:15px 0 12px;padding:0}
+.acai-banana-options legend{font-size:14px;font-weight:900;color:#302216;margin-bottom:11px}
+.acai-banana-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.acai-banana-option{border:1px solid #e4d3bd;border-radius:13px;background:white;padding:12px;display:flex;flex-wrap:wrap;align-items:center;gap:7px;cursor:pointer;min-height:78px}
+.acai-banana-option:has(input:checked){border-color:#41946b;background:#f0faf4;box-shadow:0 0 0 1px #41946b28}
+.acai-banana-option input{width:18px;height:18px;accent-color:#238650;flex:none}
+.acai-banana-option span{font-size:13px;font-weight:850;flex:1;white-space:nowrap}
+.acai-banana-option small{display:block;width:100%;font-size:12px;color:#846f59;padding-inline-start:25px}
+.acai-banana-option .acai-price-positive,.custom-extra-option .acai-price-positive{color:#15834a;font-weight:900;font-size:13px}
+#customModal[data-product="acai_smoothie"] .custom-extra-options{background:#f6fbf6;border-color:#e0edde}
+#customModal[data-product="acai_smoothie"] .custom-extra-options h3{font-size:14px}
+#customModal[data-product="acai_smoothie"] .custom-extra-option{min-height:53px}
+@media(max-width:390px){.acai-banana-option{padding:9px}.acai-banana-option span{font-size:12px}}
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -226,7 +242,15 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="vanilla" disabled><span>فانيلا</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="hazelnut" disabled><span>بندق (هازلنت)</span><small>غير متوفر</small></label>
     <label class="syrup-option unavailable"><input type="radio" name="syrup" value="chocolate" disabled><span>شوكولاتة</span><small>غير متوفر</small></label>
-  </fieldset><section id="extraOptions" class="custom-extra-options" hidden><h3>إضافات المشروب</h3><div id="extraOptionsList"></div><p class="hint">سعر كل إضافة يحتسب على كل كوب.</p></section><p id="customCaramelPrice" class="custom-price">الكراميل: جرعة واحدة، برسوم إضافية 1 درهم لكل مشروب.</p>
+  </fieldset>
+  <fieldset id="acaiBananaFieldset" class="acai-banana-options" hidden>
+    <legend>تبى موز مع الأساي؟</legend>
+    <div class="acai-banana-grid">
+      <label class="acai-banana-option"><input type="radio" name="acaiBanana" value="no" checked><span>بدون موز</span><small>بدون رسوم</small></label>
+      <label class="acai-banana-option"><input type="radio" name="acaiBanana" value="yes"><span>مع موز</span><small class="acai-price-positive">+2 AED</small></label>
+    </div>
+  </fieldset>
+  <section id="extraOptions" class="custom-extra-options" hidden><h3>إضافات المشروب</h3><div id="extraOptionsList"></div><p class="hint">سعر كل إضافة يحتسب على كل كوب.</p></section><p id="customCaramelPrice" class="custom-price">الكراميل: جرعة واحدة، برسوم إضافية 1 درهم لكل مشروب.</p>
   <button type="button" id="confirmCustom" class="custom-confirm">أضف للسلة <span>＋</span></button>
 </section>
 <div class="overlay" id="overlay"></div><aside class="drawer" id="drawer"><div class="drawer-head"><h2 id="drawerTitle">سلة الطلبات</h2><button class="close" id="closeCart" aria-label="إغلاق">×</button></div>
@@ -260,4 +284,4 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم</button><button type="button" id="skipFeedback">لاحقاً</button></div>
 </section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
-<script src="/i18n.js?v=17" defer></script><script src="/app.js?v=17" defer></script></body></html>
+<script src="/i18n.js?v=18" defer></script><script src="/app.js?v=18" defer></script></body></html>
