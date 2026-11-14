@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id);
 let products=[],promotions=[],selection='all',search='',cart={},cartNotes={},shopOpen=false,banner=0;
 let customizeId=null,customizeSource=null,confirmTimer=null,feedbackToken=null,feedbackOrderId=null,feedbackRating=null,feedbackReasons=new Set();
+let quickRequestId=null,quickRequestFingerprint=null,quickOrderId=null,quickOrderToken=null;
 const groups=[['Hot Drinks','المشروبات الساخنة','i-cup'],['Cold Drinks','المشروبات الباردة','i-cold'],['Croissants','الكرواسون','i-crois'],['Desserts','الحلويات','i-crois'],['Other','أخرى','i-all']];
 function money(fils){return (Number(fils||0)/100).toFixed(2).replace(/\.00$/,'')+' AED'}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
@@ -242,15 +243,68 @@ function step(s){$('cartStep').hidden=s!=='cart';$('checkoutForm').hidden=s!=='c
 $('cartButton').onclick=()=>{step('cart');drawer(true)};$('clearCart').onclick=()=>{cart={};cartNotes={};renderCart();notice('تم تفريغ السلة')};$('closeCart').onclick=()=>drawer(false);$('overlay').onclick=()=>drawer(false);
 $('checkout').onclick=()=>{if(!shopOpen){notice('استقبال الطلبات مغلق حالياً');return}if(!qty()){notice('اختار منتجات أولاً');return}if(Object.keys(cart).some(k=>!productForKey(k)?.available)){notice('في منتج غير متوفر بالسلة، احذفه أولاً');return}renderCheckoutNotes();step('checkout')};
 $('goCart').onclick=()=>step('cart');
+
+function orderItemPayload(){
+ return Object.keys(cart).filter(key=>cart[key]>0).map(key=>({
+  id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key),
+  syrup_qty:shotsForKey(key),addons:extrasForKey(key),item_note:(cartNotes[key]||'').trim()
+ }));
+}
+function newQuickRequestId(){
+ if(window.crypto?.randomUUID)return window.crypto.randomUUID();
+ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+}
 $('checkoutForm').onsubmit=async e=>{
- e.preventDefault();$('submitOrder').disabled=true;$('checkoutError').textContent='جاري إرسال الطلب...';
+ e.preventDefault();
+ if($('submitOrder').disabled||!shopOpen||!qty())return;
+ const items=orderItemPayload(),fingerprint=JSON.stringify(items);
+ if(fingerprint!==quickRequestFingerprint){
+  quickRequestId=newQuickRequestId();quickRequestFingerprint=fingerprint;
+ }
+ $('submitOrder').disabled=true;$('goCart').disabled=true;
+ $('checkoutError').textContent='جاري تأكيد الطلب...';
  try{
-  const payload={customer_name:$('customerName').value.trim(),phone:$('customerPhone').value.trim(),car_plate:$('customerCar').value.trim(),notes:$('customerNotes').value.trim(),items:Object.keys(cart).filter(k=>cart[k]>0).map(key=>({id:key.split('__')[0],qty:cart[key],syrup:syrupForKey(key),syrup_qty:shotsForKey(key),addons:extrasForKey(key),item_note:(cartNotes[key]||'').trim()}))};
-  const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
-  $('receiptText').textContent=`رقم طلبك #${result.id} — الإجمالي ${money(result.total_fils)}. وصل الطلب إلى شاشة الموظفين.`;
+  const payload={quick:true,request_id:quickRequestId,items};
+  const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر تسجيل الطلب');
+  quickOrderId=result.id;quickOrderToken=result.feedback_token;
+  $('orderNumber').textContent='#'+result.id;
+  $('receiptText').textContent='الإجمالي '+money(result.total_fils)+' — تم إرسال الطلب إلى الموظفين.';
+  $('optionalOrderDetails').open=false;
+  $('orderDetailsForm').reset();$('orderDetailsError').textContent='';
+  $('saveOrderDetails').disabled=false;$('saveOrderDetails').textContent='حفظ تفاصيل الطلب';
   feedbackToken=result.feedback_token||null;feedbackOrderId=result.id;resetFeedback();rememberPendingReview();
-  cart={};cartNotes={};renderCart();step('success');$('drawer').scrollTop=0;
- }catch(err){$('checkoutError').textContent=err.message}finally{$('submitOrder').disabled=false}
+  cart={};cartNotes={};renderCart();
+  quickRequestId=null;quickRequestFingerprint=null;
+  step('success');$('drawer').scrollTop=0;
+ }catch(err){$('checkoutError').textContent=err.message}
+ finally{$('submitOrder').disabled=false;$('goCart').disabled=false}
+};
+$('orderDetailsForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(!quickOrderId||!quickOrderToken)return;
+ const values={
+  customer_name:$('customerName').value.trim(),
+  phone:$('customerPhone').value.trim(),
+  car_plate:$('customerCar').value.trim(),
+  notes:$('customerNotes').value.trim()
+ };
+ if(!Object.values(values).some(Boolean)){
+  $('orderDetailsError').textContent='اكتب معلومة واحدة على الأقل، أو تقدر تتخطى هالخطوة.';return;
+ }
+ $('saveOrderDetails').disabled=true;$('orderDetailsError').textContent='جاري حفظ التفاصيل...';
+ try{
+  const res=await fetch('/api/orders/'+quickOrderId+'/details',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({...values,order_token:quickOrderToken})
+  });
+  const result=await res.json();if(!res.ok)throw Error(result.error||'تعذر حفظ التفاصيل');
+  $('orderDetailsError').textContent='تم تحديث تفاصيل الطلب عند الموظفين.';
+  $('optionalOrderDetails').open=false;
+  $('optionalOrderDetails').querySelector('summary').textContent='تم حفظ تفاصيل الطلب (اختياري)';
+  notice('تم إرسال التفاصيل للموظفين');
+ }catch(err){$('orderDetailsError').textContent=err.message}
+ finally{$('saveOrderDetails').disabled=false}
 };
 
 
