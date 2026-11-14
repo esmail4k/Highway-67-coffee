@@ -850,13 +850,13 @@ class Handler(BaseHTTPRequestHandler):
                         return self.sendj(400,{'error':'رقم السيارة غير صحيح'})
                     updates[key]=value
             if not updates:return self.sendj(400,{'error':'اكتب معلومة واحدة على الأقل أو اختر تخطي'})
-            digest=hashlib.sha256(token.encode()).hexdigest()
             with LOCK,con() as d:
                 d.execute('BEGIN IMMEDIATE')
-                row=d.execute('''SELECT o.status,o.deleted_at,o.created_at,t.token_digest
-                    FROM orders o JOIN order_feedback_tokens t ON t.order_id=o.id
-                    WHERE o.id=?''',(oid,)).fetchone()
-                if not row or not hmac.compare_digest(row['token_digest'],digest):
+                row=d.execute('SELECT status,deleted_at,created_at,request_id FROM orders WHERE id=?',(oid,)).fetchone()
+                if not row or not row['request_id'] or not SECRET:
+                    return self.sendj(403,{'error':'صلاحية تعديل الطلب غير صحيحة'})
+                expected=hmac.new(SECRET.encode(),('details:'+row['request_id']).encode(),hashlib.sha256).hexdigest()
+                if not hmac.compare_digest(expected,token):
                     return self.sendj(403,{'error':'صلاحية تعديل الطلب غير صحيحة'})
                 if row['deleted_at'] or row['status']=='cancelled':
                     return self.sendj(409,{'error':'تعذر تعديل طلب ملغي'})
@@ -894,8 +894,10 @@ class Handler(BaseHTTPRequestHandler):
                     prior=d.execute('SELECT id,total_fils FROM orders WHERE request_id=?',(request_id,)).fetchone()
                     if prior:
                         previous_token=hmac.new(SECRET.encode(),('quick:'+request_id).encode(),hashlib.sha256).hexdigest()
+                        details_token=hmac.new(SECRET.encode(),('details:'+request_id).encode(),hashlib.sha256).hexdigest()
                         return self.sendj(200,{'ok':True,'id':prior['id'],'total_fils':prior['total_fils'],
-                                               'feedback_token':previous_token,'already_created':True})
+                                               'feedback_token':previous_token,'details_token':details_token,
+                                               'already_created':True})
                 shift=active_shift(d)
                 if not shift:return self.sendj(409,{'error':'المقهى مغلق حالياً، لم يبدأ الموظف يوم العمل'})
                 allowed={p['id']:p for p in catalog(d)[0] if p['available']}
@@ -932,7 +934,10 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
                 d.commit()
-            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total,'feedback_token':feedback_token})
+            details_token=(hmac.new(SECRET.encode(),('details:'+request_id).encode(),hashlib.sha256).hexdigest()
+                           if quick else None)
+            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total,
+                                   'feedback_token':feedback_token,'details_token':details_token})
         if path=='/api/feedback':
             if not self.order_rate_check():
                 return self.sendj(429,{'error':'حاول مرة ثانية بعد قليل'})
