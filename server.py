@@ -156,6 +156,8 @@ def init():
         add_column(d,'orders','cancel_reason',"TEXT NOT NULL DEFAULT ''")
         add_column(d,'orders','deleted_at','TEXT')
         add_column(d,'orders','deleted_by',"TEXT NOT NULL DEFAULT ''")
+        add_column(d,'orders','request_id','TEXT')
+        d.execute('CREATE UNIQUE INDEX IF NOT EXISTS unique_quick_order_request ON orders(request_id) WHERE request_id IS NOT NULL')
         d.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
             actor TEXT NOT NULL, action TEXT NOT NULL, order_id INTEGER,
@@ -829,19 +831,74 @@ class Handler(BaseHTTPRequestHandler):
                 # Revoke any pending verification if account was disabled or reset.
                 d.execute('DELETE FROM login_challenges WHERE role=? AND staff_id=?',('staff',ident))
             return self.sendj(200,{'ok':True})
+        match=re.fullmatch(r'/api/orders/(\d+)/details',path)
+        if match:
+            if not self.order_rate_check():return self.sendj(429,{'error':'حاول مرة ثانية بعد قليل'})
+            oid=int(match.group(1));token=data.get('order_token')
+            if not isinstance(token,str) or not 16<=len(token)<=160:
+                return self.sendj(403,{'error':'صلاحية تعديل الطلب غير صحيحة'})
+            updates={}
+            for key,limit in (('customer_name',65),('phone',20),('car_plate',32),('notes',300)):
+                try:value=textfield(data,key,limit)
+                except ValueError as e:return self.sendj(400,{'error':str(e)})
+                if value:
+                    if key=='customer_name' and len(value)<2:
+                        return self.sendj(400,{'error':'اكتب اسماً من حرفين على الأقل'})
+                    if key=='phone' and not 7<=len(re.sub(r'\D','',value))<=15:
+                        return self.sendj(400,{'error':'رقم الهاتف غير صحيح'})
+                    if key=='car_plate' and len(value)<2:
+                        return self.sendj(400,{'error':'رقم السيارة غير صحيح'})
+                    updates[key]=value
+            if not updates:return self.sendj(400,{'error':'اكتب معلومة واحدة على الأقل أو اختر تخطي'})
+            with LOCK,con() as d:
+                d.execute('BEGIN IMMEDIATE')
+                row=d.execute('SELECT status,deleted_at,created_at,request_id FROM orders WHERE id=?',(oid,)).fetchone()
+                if not row or not row['request_id'] or not SECRET:
+                    return self.sendj(403,{'error':'صلاحية تعديل الطلب غير صحيحة'})
+                expected=hmac.new(SECRET.encode(),('details:'+row['request_id']).encode(),hashlib.sha256).hexdigest()
+                if not hmac.compare_digest(expected,token):
+                    return self.sendj(403,{'error':'صلاحية تعديل الطلب غير صحيحة'})
+                if row['deleted_at'] or row['status']=='cancelled':
+                    return self.sendj(409,{'error':'تعذر تعديل طلب ملغي'})
+                if (datetime.now(timezone.utc)-datetime.fromisoformat(row['created_at'])).total_seconds()>86400:
+                    return self.sendj(409,{'error':'انتهت مهلة تحديث بيانات الطلب'})
+                columns=','.join(key+'=?' for key in updates)
+                d.execute('UPDATE orders SET '+columns+' WHERE id=?',(*updates.values(),oid))
+                record_log(d,'الزبون','order_details_updated',oid,'تحديث تفاصيل الزبون الاختيارية')
+                d.commit()
+            return self.sendj(200,{'ok':True,'id':oid})
         if path=='/api/orders':
             if not self.order_rate_check():return self.sendj(429,{'error':'طلبات كثيرة من نفس الاتصال، حاول بعد قليل'})
             if not REAL_ORDERS:return self.sendj(503,{'error':'استقبال الطلبات غير مفعّل على هذا الخادم'})
-            try:
-                name=textfield(data,'customer_name',65,True);phone=textfield(data,'phone',20,True)
-                plate=textfield(data,'car_plate',32,True);notes=textfield(data,'notes',300)
-            except ValueError as e:return self.sendj(400,{'error':str(e)})
-            digits=re.sub(r'\D','',phone)
-            if len(name)<2 or not 7<=len(digits)<=15 or len(plate)<2:return self.sendj(400,{'error':'يرجى التأكد من الاسم ورقم الهاتف ورقم السيارة'})
+            quick=data.get('quick',False);request_id=data.get('request_id')
+            if type(quick)!=bool:
+                return self.sendj(400,{'error':'طريقة تأكيد الطلب غير صحيحة'})
+            if quick:
+                if (not SECRET or not isinstance(request_id,str) or
+                    not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',request_id)):
+                    return self.sendj(400,{'error':'تعذر تأكيد الطلب السريع، حاول تحديث الصفحة'})
+                name,phone,plate,notes='طلب سريع','—','—',''
+            else:
+                try:
+                    name=textfield(data,'customer_name',65,True);phone=textfield(data,'phone',20,True)
+                    plate=textfield(data,'car_plate',32,True);notes=textfield(data,'notes',300)
+                except ValueError as e:return self.sendj(400,{'error':str(e)})
+                digits=re.sub(r'\D','',phone)
+                if len(name)<2 or not 7<=len(digits)<=15 or len(plate)<2:
+                    return self.sendj(400,{'error':'يرجى التأكد من الاسم ورقم الهاتف ورقم السيارة'})
             order_items=data.get('items')
             if not isinstance(order_items,list) or not 1<=len(order_items)<=30:return self.sendj(400,{'error':'الطلب فاضي أو يحتوي منتجات كثيرة'})
             with LOCK,con() as d:
-                d.execute('BEGIN IMMEDIATE');shift=active_shift(d)
+                d.execute('BEGIN IMMEDIATE')
+                if quick:
+                    prior=d.execute('SELECT id,total_fils FROM orders WHERE request_id=?',(request_id,)).fetchone()
+                    if prior:
+                        previous_token=hmac.new(SECRET.encode(),('quick:'+request_id).encode(),hashlib.sha256).hexdigest()
+                        details_token=hmac.new(SECRET.encode(),('details:'+request_id).encode(),hashlib.sha256).hexdigest()
+                        return self.sendj(200,{'ok':True,'id':prior['id'],'total_fils':prior['total_fils'],
+                                               'feedback_token':previous_token,'details_token':details_token,
+                                               'already_created':True})
+                shift=active_shift(d)
                 if not shift:return self.sendj(409,{'error':'المقهى مغلق حالياً، لم يبدأ الموظف يوم العمل'})
                 allowed={p['id']:p for p in catalog(d)[0] if p['available']}
                 lines=[];total=0
@@ -867,16 +924,20 @@ class Handler(BaseHTTPRequestHandler):
                     lines.append((p,x['qty'],syrup,syrup_qty,item_note.strip(),unit_price,addon_details))
                     total+=unit_price*x['qty']
                 if total>10000000:return self.sendj(400,{'error':'قيمة الطلب مرتفعة جداً'})
-                cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils) VALUES(?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total))
+                cursor=d.execute('INSERT INTO orders(shift_id,created_at,status,customer_name,phone,car_plate,notes,total_fils,request_id) VALUES(?,?,?,?,?,?,?,?,?)',(shift['id'],utcnow(),'new',name,phone,plate,notes,total,request_id if quick else None))
                 oid=cursor.lastrowid
                 for p,qty,syrup,syrup_qty,item_note,unit_price,addon_details in lines:
                     d.execute('INSERT INTO order_items(order_id,product_id,name,image,qty,price_fils,original_fils,syrup,syrup_qty,item_note,addon_details) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                               (oid,p['id'],p['name'],p['image'],qty,unit_price,p['price_fils'],syrup,syrup_qty,item_note,json.dumps(addon_details,ensure_ascii=False)))
-                feedback_token=secrets.token_urlsafe(24)
+                feedback_token=(hmac.new(SECRET.encode(),('quick:'+request_id).encode(),hashlib.sha256).hexdigest()
+                                if quick else secrets.token_urlsafe(24))
                 d.execute('INSERT INTO order_feedback_tokens(order_id,token_digest,created_at) VALUES(?,?,?)',
                           (oid,hashlib.sha256(feedback_token.encode()).hexdigest(),utcnow()))
                 d.commit()
-            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total,'feedback_token':feedback_token})
+            details_token=(hmac.new(SECRET.encode(),('details:'+request_id).encode(),hashlib.sha256).hexdigest()
+                           if quick else None)
+            return self.sendj(201,{'ok':True,'id':oid,'total_fils':total,
+                                   'feedback_token':feedback_token,'details_token':details_token})
         if path=='/api/feedback':
             if not self.order_rate_check():
                 return self.sendj(429,{'error':'حاول مرة ثانية بعد قليل'})

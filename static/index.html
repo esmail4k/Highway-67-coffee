@@ -210,6 +210,31 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 #customModal[data-product="acai_smoothie"] .custom-extra-options h3{font-size:14px}
 #customModal[data-product="acai_smoothie"] .custom-extra-option{min-height:53px}
 @media(max-width:390px){.acai-banana-option{padding:9px}.acai-banana-option span{font-size:12px}}
+
+/* Confirm-first checkout. Customers get the real order number before any personal data. */
+.quick-checkout-form{margin:0!important}
+.quick-checkout-card{text-align:start;padding:9px 1px 14px}
+.quick-checkout-eyebrow{display:block;color:#b08447;font:800 10px Georgia,serif;letter-spacing:2px;margin:12px 0}
+.quick-checkout-card h3{font-size:21px;line-height:1.45;margin:11px 0;color:#302316}
+.quick-checkout-card>p{font-size:13px;line-height:1.9;color:#77624b}
+.quick-checkout-card .amountPreview{padding:18px 0;margin-top:19px}
+.quick-checkout-card .quick-payment-note{background:#f8f2e6;border:1px solid #e9d9c2;border-radius:11px;padding:11px 13px}
+.quick-checkout-card #submitOrder{padding:15px 10px;font-size:16px;background:#258353}
+.quick-checkout-card #goCart{background:#f2e9db;color:#513e2c}
+.quick-checkout-card #checkoutError{color:#b14439;font-weight:700;min-height:13px}
+.confirmed-order-number{margin:16px 0 11px;padding:18px;border:1px solid #b8ddc7;border-radius:18px;background:#f0faf3}
+.confirmed-order-number span{display:block;font-size:12px;color:#347352;font-weight:800}
+.confirmed-order-number strong{display:block;font:bold clamp(36px,9vw,54px) Arial,sans-serif;letter-spacing:1px;color:#207449;margin:8px 0 4px}
+.pickup-number-help{font-size:13px!important;color:#336447!important;line-height:1.7}
+.optional-order-details{border:1px solid #e1d5c2;background:#fffdf8;border-radius:14px;margin:20px 0 13px;text-align:start}
+.optional-order-details summary{cursor:pointer;font-size:14px;font-weight:900;padding:15px;color:#4c3524}
+.optional-order-details[open] summary{border-bottom:1px solid #eee2d1}
+.optional-order-details>p{font-size:12px;padding:0 16px;margin:12px 0;color:#78634d;line-height:1.7}
+#orderDetailsForm{padding:0 16px 18px;text-align:start;margin:0}
+#orderDetailsForm label{display:block;margin-top:11px}
+#orderDetailsForm input,#orderDetailsForm textarea{width:100%;box-sizing:border-box}
+#orderDetailsError{font-size:12px;color:#3b7251;min-height:12px}
+#saveOrderDetails{background:#8d6a3a!important;font-size:13px}
 </style>
 </head><body data-language-page="customer">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden"><defs>
@@ -255,8 +280,35 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
 </section>
 <div class="overlay" id="overlay"></div><aside class="drawer" id="drawer"><div class="drawer-head"><h2 id="drawerTitle">سلة الطلبات</h2><button class="close" id="closeCart" aria-label="إغلاق">×</button></div>
 <div id="cartStep"><div id="cartItems"></div><button type="button" id="clearCart" class="clearCart" hidden>تفريغ السلة</button><div class="sum"><span>المجموع</span><span id="total">0 AED</span></div><button class="checkout" id="checkout">إتمام الطلب</button><p class="msg">الدفع عند الاستلام. لا يُخصم أي مبلغ من بطاقتك عبر الموقع.</p></div>
-<form id="checkoutForm" class="checkoutForm" hidden><label for="customerName">اسم الزبون</label><input id="customerName" name="customerName" autocomplete="name" required maxlength="65" placeholder="اسمك"><label for="customerPhone">رقم الهاتف</label><input id="customerPhone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="05xxxxxxxx"><label for="customerCar">رقم السيارة</label><input id="customerCar" name="customerCar" required maxlength="32" placeholder="رقم اللوحة / رمز اللوحة"><div class="checkout-line-title">ملاحظات لكل منتج (اختياري)</div><p class="checkout-line-help">لو تبا مشروب بدون سكر أو عندك طلب خاص، اكتب الملاحظة تحت المنتج.</p><div id="checkoutItemNotes" class="checkout-line-notes"></div><label for="customerNotes">ملاحظات عامة على الطلب (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: بدون سكر، ثلج أقل..."></textarea><div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div><p class="subnote" id="checkoutError">بعد التأكيد، توصّل الطلبية مباشرة إلى شاشة الموظفين.</p><button id="submitOrder" type="submit">تأكيد وإرسال الطلب</button><button type="button" id="goCart" class="back">الرجوع إلى السلة</button></form>
-<div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3><p id="receiptText"></p><div class="review-optional-intro" id="reviewOptionalIntro">
+<form id="checkoutForm" class="checkoutForm quick-checkout-form" hidden>
+  <div class="quick-checkout-card">
+    <span class="quick-checkout-eyebrow">HIGHWAY 67 · QUICK ORDER</span>
+    <h3>تأكيد الطلب بدون تعبئة بيانات</h3>
+    <p>اضغط تأكيد الطلب، وبيوصّل مباشرة للموظفين ويطلع لك رقم تستلم به طلبك. ما يحتاج اسم أو رقم هاتف أو رقم سيارة.</p>
+    <div id="checkoutItemNotes" hidden></div>
+    <div class="amountPreview"><b>الإجمالي</b><b id="checkoutTotal"></b></div>
+    <p class="quick-payment-note">الدفع عند الاستلام. تأكد من محتويات السلة قبل إرسال الطلب.</p>
+    <p class="subnote" id="checkoutError" role="alert"></p>
+    <button id="submitOrder" type="submit">تأكيد الطلب الآن</button>
+    <button type="button" id="goCart" class="back">الرجوع إلى السلة</button>
+  </div>
+</form>
+<div id="successStep" class="success" hidden><svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><circle cx="40" cy="40" r="35" fill="#e0f2e9"/><circle cx="40" cy="40" r="26" fill="#278c61"/><path d="m26 40 10 10 19-20" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3>استلمنا طلبك بنجاح</h3>
+ <div class="confirmed-order-number"><span>رقم طلبك</span><strong id="orderNumber" dir="ltr">#—</strong></div>
+ <p id="receiptText" aria-live="polite"></p>
+ <p class="pickup-number-help">احتفظ برقم الطلب واذكره للموظف عند الاستلام. الطلب وصل للموظفين فعلاً.</p>
+ <details id="optionalOrderDetails" class="optional-order-details">
+   <summary>إضافة بيانات أو ملاحظة للطلب (اختياري)</summary>
+   <p>طلبك تأكد وانرسل. إذا حبيت، تقدر تضيف معلومات تساعد الموظفين في التسليم، بدون ما تعيد الطلب.</p>
+   <form id="orderDetailsForm" class="checkoutForm">
+     <label for="customerName">الاسم (اختياري)</label><input id="customerName" maxlength="65" autocomplete="name" placeholder="اسمك">
+     <label for="customerPhone">رقم الهاتف (اختياري)</label><input id="customerPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="05xxxxxxxx">
+     <label for="customerCar">رقم السيارة (اختياري)</label><input id="customerCar" maxlength="32" placeholder="رقم اللوحة / رمز اللوحة">
+     <label for="customerNotes">ملاحظة للموظفين (اختياري)</label><textarea id="customerNotes" maxlength="300" placeholder="مثلاً: أنا بانتظر في السيارة"></textarea>
+     <p id="orderDetailsError" class="subnote" role="status"></p>
+     <button type="submit" id="saveOrderDetails">حفظ تفاصيل الطلب</button>
+   </form>
+ </details><div class="review-optional-intro" id="reviewOptionalIntro">
   <button type="button" id="openFeedback">تقييم الطلب (اختياري)</button>
   <p>عطنا رأيك في وقت يناسبك. التقييم ما يأثر على تأكيد طلبك.</p>
 </div>
@@ -284,4 +336,4 @@ html[dir="ltr"] .promoCard .timer{direction:ltr}
   <div class="feedback-actions"><button type="button" id="sendFeedback">إرسال التقييم</button><button type="button" id="skipFeedback">لاحقاً</button></div>
 </section><button class="checkout" id="newOrder" type="button">الرجوع للقائمة</button></div>
 </aside><div class="toast" id="toast"></div>
-<script src="/i18n.js?v=18" defer></script><script src="/app.js?v=18" defer></script></body></html>
+<script src="/i18n.js?v=19" defer></script><script src="/app.js?v=19" defer></script></body></html>
