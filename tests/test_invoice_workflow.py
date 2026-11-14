@@ -449,6 +449,8 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertTrue(created['id']>0)
         self.assertEqual(created['total_fils'],2400)
         self.assertTrue(created['feedback_token'])
+        self.assertTrue(created['details_token'])
+        self.assertNotEqual(created['details_token'],created['feedback_token'])
         code,staff=self.request(self.staff,'GET','/api/staff/overview')
         self.assertEqual(code,200)
         order=next(o for o in staff['orders'] if o['id']==created['id'])
@@ -460,10 +462,11 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertEqual(code,200,again)
         self.assertEqual(again['id'],created['id'])
         self.assertEqual(again['feedback_token'],created['feedback_token'])
+        self.assertEqual(again['details_token'],created['details_token'])
         self.assertTrue(again['already_created'])
         code,staff=self.request(self.staff,'GET','/api/staff/overview')
         self.assertEqual(sum(o['id']==created['id'] for o in staff['orders']),1)
-        details={'order_token':created['feedback_token'],
+        details={'order_token':created['details_token'],
                  'customer_name':'Quick Customer',
                  'phone':'0501234567','car_plate':'UAE 777',
                  'notes':'Will collect with pickup number'}
