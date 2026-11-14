@@ -431,4 +431,56 @@ class InvoiceWorkflowTest(unittest.TestCase):
             migration=db.execute("SELECT 1 FROM site_migrations WHERE key='acai_20_aed_20261112'").fetchone()
             self.assertIsNotNone(migration)
 
+
+    def test_quick_order_with_number_optional_details_and_retry_safety(self):
+        code,login=self.request(self.staff,'POST','/api/staff/login',
+            {'username':'test-staff','password':'test-staff-strong-password'})
+        self.assertEqual(code,200,login)
+        code,shift=self.request(self.customer,'GET','/api/shift')
+        self.assertEqual(code,200)
+        if not shift['open']:
+            code,started=self.request(self.staff,'POST','/api/staff/shift/start',{})
+            self.assertEqual(code,200,started)
+        request_id='quick-checkout-unique-test-0001'
+        quick={'quick':True,'request_id':request_id,
+               'items':[{'id':'espresso','qty':2,'item_note':'Less sugar'}]}
+        code,created=self.request(self.customer,'POST','/api/orders',quick)
+        self.assertEqual(code,201,created)
+        self.assertTrue(created['id']>0)
+        self.assertEqual(created['total_fils'],2400)
+        self.assertTrue(created['feedback_token'])
+        code,staff=self.request(self.staff,'GET','/api/staff/overview')
+        self.assertEqual(code,200)
+        order=next(o for o in staff['orders'] if o['id']==created['id'])
+        self.assertEqual(order['customer_name'],'طلب سريع')
+        self.assertEqual(order['phone'],'—')
+        self.assertEqual(order['car_plate'],'—')
+        self.assertEqual(order['items'][0]['item_note'],'Less sugar')
+        code,again=self.request(self.customer,'POST','/api/orders',quick)
+        self.assertEqual(code,200,again)
+        self.assertEqual(again['id'],created['id'])
+        self.assertEqual(again['feedback_token'],created['feedback_token'])
+        self.assertTrue(again['already_created'])
+        code,staff=self.request(self.staff,'GET','/api/staff/overview')
+        self.assertEqual(sum(o['id']==created['id'] for o in staff['orders']),1)
+        details={'order_token':created['feedback_token'],
+                 'customer_name':'Quick Customer',
+                 'phone':'0501234567','car_plate':'UAE 777',
+                 'notes':'Will collect with pickup number'}
+        code,rejected=self.request(self.customer,'POST',f"/api/orders/{created['id']}/details",
+            dict(details,order_token='wrong-token-not-allowed'))
+        self.assertEqual(code,403,rejected)
+        code,invalid=self.request(self.customer,'POST',f"/api/orders/{created['id']}/details",
+            dict(details,phone='abc'))
+        self.assertEqual(code,400,invalid)
+        code,saved=self.request(self.customer,'POST',f"/api/orders/{created['id']}/details",details)
+        self.assertEqual(code,200,saved)
+        code,staff=self.request(self.staff,'GET','/api/staff/overview')
+        order=next(o for o in staff['orders'] if o['id']==created['id'])
+        self.assertEqual(order['customer_name'],'Quick Customer')
+        self.assertEqual(order['phone'],'0501234567')
+        self.assertEqual(order['car_plate'],'UAE 777')
+        self.assertEqual(order['notes'],'Will collect with pickup number')
+        self.assertEqual(order['total_fils'],2400)
+
 if __name__=='__main__':unittest.main()
