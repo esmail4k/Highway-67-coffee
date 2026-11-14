@@ -23,11 +23,11 @@ w.fetch=async(path,opts={})=>{
   assert.equal(body.customer_name,undefined);
   assert.equal(body.phone,undefined);
   assert.equal(body.car_plate,undefined);
-  data={ok:true,id:52,total_fils:2400,feedback_token:'secret-one-order-token'};
+  data={ok:true,id:52,total_fils:2400,feedback_token:'secret-review-token',details_token:'secret-details-token'};
   status=201;
  }
  else if(path==='/api/orders/52/details'){
-  assert.equal(body.order_token,'secret-one-order-token');
+  assert.equal(body.order_token,'secret-details-token');
   data={ok:true,id:52};
  }
  else throw Error('Unexpected API '+path);
