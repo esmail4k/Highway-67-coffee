@@ -270,6 +270,7 @@ $('checkoutForm').onsubmit=async e=>{
   quickOrderId=result.id;quickOrderToken=result.details_token;
   $('orderNumber').textContent='#'+result.id;
   $('receiptText').textContent='الإجمالي '+money(result.total_fils)+' — تم إرسال الطلب إلى الموظفين.';
+  $('optionalOrderDetails').hidden=false;
   $('optionalOrderDetails').open=false;
   $('orderDetailsForm').reset();$('orderDetailsError').textContent='';
   $('saveOrderDetails').disabled=false;$('saveOrderDetails').textContent='حفظ تفاصيل الطلب';
@@ -354,6 +355,9 @@ $('openFeedback').onclick=showRatingForm;
 $('resumeReview').onclick=()=>{
  const record=pendingReview();if(!record){refreshReviewReminder();return}
  feedbackToken=record.token;feedbackOrderId=record.id;resetFeedback();
+ quickOrderId=null;quickOrderToken=null;
+ $('orderNumber').textContent='#'+record.id;
+ $('optionalOrderDetails').hidden=true;
  $('receiptText').textContent='تقييم الطلب السابق #'+record.id;
  step('success');drawer(true);showRatingForm();refreshReviewReminder(true);
 };
