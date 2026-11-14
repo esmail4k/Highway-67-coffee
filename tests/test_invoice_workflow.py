@@ -247,9 +247,29 @@ class InvoiceWorkflowTest(unittest.TestCase):
         code,menu=self.request(self.customer,'GET','/api/products')
         self.assertEqual(code,200,menu)
         acai=next(p for p in menu['products'] if p['id']=='acai_smoothie')
-        peanuts=next(a for a in acai['addons'] if a['name']=='إكسترا بينات')
-        self.assertEqual(peanuts['price_fils'],200)
-        self.assertEqual(peanuts['max_qty'],1)
+        self.assertEqual({a['name'] for a in acai['addons']},
+                         {'إكسترا زبدة الفول السوداني','موز'})
+        peanuts=next(a for a in acai['addons'] if a['name']=='إكسترا زبدة الفول السوداني')
+        banana=next(a for a in acai['addons'] if a['name']=='موز')
+        for addon in (peanuts,banana):
+            self.assertEqual(addon['price_fils'],200)
+            self.assertEqual(addon['max_qty'],1)
+        code,rejected=self.request(self.owner,'POST','/api/owner/addons/save',{
+            'id':None,'product_id':'acai_smoothie','name':'كراميل',
+            'price':1,'max_qty':1,'enabled':True})
+        self.assertEqual(code,400,rejected)
+        acai_order={'customer_name':'Acai Extras Test','phone':'0501234567',
+                    'car_plate':'ACAI 123','notes':'',
+                    'items':[{'id':'acai_smoothie','qty':2,
+                              'addons':[{'id':peanuts['id'],'qty':1},
+                                        {'id':banana['id'],'qty':1}]}]}
+        code,purchased=self.request(self.customer,'POST','/api/orders',acai_order)
+        self.assertEqual(code,201,purchased)
+        self.assertEqual(purchased['total_fils'],2*(acai['final_price_fils']+400))
+        acai_order['items'][0]['syrup']='caramel'
+        acai_order['items'][0]['syrup_qty']=1
+        code,rejected=self.request(self.customer,'POST','/api/orders',acai_order)
+        self.assertEqual(code,400,rejected)
         code,owned=self.request(self.owner,'GET','/api/owner/products')
         self.assertEqual(code,200,owned)
         self.assertTrue(next(p for p in owned['products'] if p['id']=='acai_smoothie')['addons'])
