@@ -236,6 +236,25 @@ def init():
                 d.execute('INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,1)',
                           ('acai_smoothie','إكسترا بينات',200,1))
             d.execute("INSERT INTO site_migrations(key) VALUES('acai_peanuts_addon_2026_11_08')")
+        # Owner-requested acai options: only extra peanut butter and optional banana,
+        # AED 2 each, once per cup. One-time migration preserves existing invoices.
+        acai_options_key='acai_options_peanut_banana_only_2026_11_14'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(acai_options_key,)).fetchone():
+            current=[dict(a) for a in d.execute(
+                "SELECT id,name FROM product_addons WHERE product_id='acai_smoothie' ORDER BY id")]
+            peanut=next((a for a in current if a['name'] in
+                ('إكسترا بينات','إكسترا زبدة الفول السوداني','Extra Peanut Butter','Extra Peanut')),None)
+            banana=next((a for a in current if a['name'] in ('موز','Banana','إكسترا موز')),None)
+            # Hide unrelated extras from this product; do not remove historical item records.
+            d.execute("UPDATE product_addons SET enabled=0 WHERE product_id='acai_smoothie'")
+            for found,name in ((peanut,'إكسترا زبدة الفول السوداني'),(banana,'موز')):
+                if found:
+                    d.execute("UPDATE product_addons SET name=?,price_fils=200,max_qty=1,enabled=1 WHERE id=?",
+                              (name,found['id']))
+                else:
+                    d.execute("INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,1)",
+                              ('acai_smoothie',name,200,1))
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(acai_options_key,))
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
@@ -364,6 +383,9 @@ def catalog(d):
     addons=defaultdict(list)
     for a in d.execute('SELECT id,product_id,name,price_fils,max_qty FROM product_addons WHERE enabled=1 ORDER BY id'):
         a=dict(a)
+        # The acai customizer must not inherit unrelated drink extras.
+        if a['product_id']=='acai_smoothie' and a['name'] not in ('إكسترا زبدة الفول السوداني','موز'):
+            continue
         addons[a['product_id']].append(a)
     shown=[]
     active_ids={p['product_id'] for p in active}
@@ -1100,6 +1122,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('المنتج غير صحيح')
                 if price is None or price>100000 or type(max_qty)!=int or not 1<=max_qty<=10 or type(enabled)!=bool:
                     raise ValueError('تأكد من السعر وعدد مرات الإضافة')
+                if pid=='acai_smoothie' and (name not in ('إكسترا زبدة الفول السوداني','موز')
+                    or price!=200 or max_qty!=1):
+                    raise ValueError('إضافات الأساي فقط زبدة الفول السوداني أو الموز، بسعر درهمين لكل إضافة')
             except ValueError as e:return self.sendj(400,{'error':str(e)})
             with LOCK,con() as d:
                 d.execute('BEGIN IMMEDIATE')
