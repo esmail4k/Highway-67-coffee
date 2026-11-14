@@ -128,10 +128,15 @@ function closeCustomizer(){
  document.body.style.overflow='';customizeId=null;customizeSource=null;
 }
 function currentCustomAddons(){
- return Array.from(document.querySelectorAll('#extraOptionsList [data-addon-choice]')).map(input=>{
+ const chosen=Array.from(document.querySelectorAll('#extraOptionsList [data-addon-choice]')).map(input=>{
   const qty=input.type==='checkbox'?(input.checked?1:0):Number(input.value);
   return {id:Number(input.dataset.addonChoice),qty};
- }).filter(x=>Number.isInteger(x.id)&&Number.isInteger(x.qty)&&x.qty>0).sort((a,b)=>a.id-b.id);
+ }).filter(x=>Number.isInteger(x.id)&&Number.isInteger(x.qty)&&x.qty>0);
+ if(customizeId==='acai_smoothie'&&document.querySelector('input[name="acaiBanana"]:checked')?.value==='yes'){
+  const p=products.find(p=>p.id===customizeId),banana=(p?.addons||[]).find(a=>a.name==='موز');
+  if(banana)chosen.push({id:banana.id,qty:1});
+ }
+ return chosen.sort((a,b)=>a.id-b.id);
 }
 function updateCustomPrice(){
  const p=products.find(x=>x.id===customizeId);
@@ -147,18 +152,23 @@ function updateCustomPrice(){
 function openCustomizer(id,source){
  customizeId=id;customizeSource=source;
  const p=products.find(x=>x.id===id);if(!p)return;
- const syrupAllowed=['spanish','icedspanish','latte','icedlatte'].includes(id);
+ const isAcai=id==='acai_smoothie';
+ const syrupAllowed=!isAcai&&['spanish','icedspanish','latte','icedlatte'].includes(id);
+ $('customModal').dataset.product=id;
  $('syrupFieldset').hidden=!syrupAllowed;
  $('customCaramelPrice').hidden=!syrupAllowed;
- $('customHint').textContent=syrupAllowed?'اختر إضافات مشروبك':'اختر الإضافات التي تريدها مع المشروب';
+ $('acaiBananaFieldset').hidden=!isAcai;
+ $('customHint').textContent=isAcai?'اختر الأساي بالطريقة اللي تحبها':syrupAllowed?'اختر إضافات مشروبك':'اختر الإضافات التي تريدها مع المشروب';
  document.querySelector('input[name="syrup"][value=""]').checked=true;
- const addons=p.addons||[];
+ document.querySelector('input[name="acaiBanana"][value="no"]').checked=true;
+ const addons=isAcai?(p.addons||[]).filter(a=>a.name==='إكسترا زبدة الفول السوداني'):(p.addons||[]);
+ $('extraOptions').querySelector('h3').textContent=isAcai?'زبدة الفول السوداني':'إضافات المشروب';
  $('extraOptions').hidden=!addons.length;
  $('extraOptionsList').innerHTML=addons.map(a=>{
   const choice=a.max_qty===1
    ?'<input type="checkbox" data-addon-choice="'+a.id+'" aria-label="'+esc(a.name)+'">'
    :'<input type="number" data-addon-choice="'+a.id+'" min="0" max="'+a.max_qty+'" step="1" value="0" aria-label="عدد '+esc(a.name)+'">';
-  return '<label class="custom-extra-option"><span><strong>'+esc(a.name)+'</strong><small>+'+money(a.price_fils)+(a.max_qty===1?' · مرة واحدة':' · حد أقصى '+a.max_qty)+'</small></span>'+choice+'</label>';
+  return '<label class="custom-extra-option"><span><strong>'+esc(a.name)+'</strong><small class="'+(isAcai?'acai-price-positive':'')+'">+'+money(a.price_fils)+(isAcai?'':(a.max_qty===1?' · مرة واحدة':' · حد أقصى '+a.max_qty))+'</small></span>'+choice+'</label>';
  }).join('');
  document.querySelectorAll('#extraOptionsList [data-addon-choice]').forEach(input=>input.addEventListener('change',updateCustomPrice));
  document.querySelectorAll('#extraOptionsList input[type=number]').forEach(input=>input.addEventListener('input',updateCustomPrice));
@@ -171,20 +181,21 @@ function addToCart(id,shots,source,addons=[]){
  const p=products.find(x=>x.id===id);if(!p||!p.available)return;
  const selected=addons.slice().sort((a,b)=>a.id-b.id);
  const suffix=selected.length?'__addons'+selected.map(x=>x.id+'-'+x.qty).join(','):'';
- const key=id+(shots?'__caramel1':'')+suffix;
+ const key=id+(id!=='acai_smoothie'&&shots?'__caramel1':'')+suffix;
  cart[key]=Math.min(30,(cart[key]||0)+1);
  renderCart();flyToCart(p,source);showCartConfirm(p,shots,source);
 }
 function add(id,source){
  const product=products.find(p=>p.id===id&&p.available);
  if(!product)return notice('هذا المنتج غير متوفر حالياً');
- if(['spanish','icedspanish','latte','icedlatte'].includes(id)||(product.addons||[]).length)return openCustomizer(id,source);
+ if(id==='acai_smoothie'||['spanish','icedspanish','latte','icedlatte'].includes(id)||(product.addons||[]).length)return openCustomizer(id,source);
  addToCart(id,0,source);
 }
 $('closeCustom').onclick=closeCustomizer;
 $('customOverlay').onclick=closeCustomizer;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('customModal').hidden)closeCustomizer()});
 document.querySelectorAll('input[name="syrup"]').forEach(r=>r.addEventListener('change',updateCustomPrice));
+document.querySelectorAll('input[name="acaiBanana"]').forEach(r=>r.addEventListener('change',updateCustomPrice));
 $('confirmCustom').onclick=()=>{
  if(!customizeId)return;
  const syrup=document.querySelector('input[name="syrup"]:checked')?.value||'';

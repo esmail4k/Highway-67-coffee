@@ -117,18 +117,26 @@ function closeInvoiceProductPicker(){
 function chosenInvoiceAddons(){
  return Array.from(document.querySelectorAll('#invoiceAddonOptions [data-invoice-addon]')).map(input=>({
   id:Number(input.dataset.invoiceAddon),
-  qty:input.type==='checkbox'?(input.checked?1:0):Number(input.value)
+  qty:input.type==='checkbox'||input.type==='radio'?(input.checked?1:0):Number(input.value)
  })).filter(x=>x.qty>0);
 }
 function renderInvoiceAddonOptions(){
- const extras=invoiceSelectedProduct?.addons||[];
+ const allExtras=invoiceSelectedProduct?.addons||[];
+ const isAcai=invoiceSelectedProduct?.id==='acai_smoothie';
+ const peanut=isAcai?allExtras.filter(a=>a.name==='إكسترا زبدة الفول السوداني'):allExtras;
+ const banana=isAcai?allExtras.find(a=>a.name==='موز'):null;
  const area=$('invoiceAddonOptions');
- area.hidden=!extras.length;
- area.innerHTML=extras.length?'<strong>إضافات المنتج</strong>'+extras.map(a=>
-  '<label class="invoice-addon-choice"><span>'+safe(a.name)+' <small>+'+fmt(a.price_fils)+'</small></span>'
+ area.hidden=!peanut.length&&!banana;
+ const normalChoices=peanut.map(a=>
+  '<label class="invoice-addon-choice"><span>'+safe(a.name)+' <small class="'+(isAcai?'acai-price-positive':'')+'">+'+fmt(a.price_fils)+'</small></span>'
   +(a.max_qty===1?'<input type="checkbox" data-invoice-addon="'+a.id+'">':'<input type="number" data-invoice-addon="'+a.id+'" min="0" max="'+a.max_qty+'" value="0" step="1">')
   +'</label>'
- ).join(''):'';
+ ).join('');
+ const bananaChoices=banana?'<fieldset class="invoice-banana-options"><legend>تبى موز مع الأساي؟</legend><div class="invoice-banana-choices">'
+  +'<label><input type="radio" name="invoiceBanana" value="no" checked><span>بدون موز</span></label>'
+  +'<label><input type="radio" name="invoiceBanana" value="1" data-invoice-addon="'+banana.id+'"><span>مع موز</span><small class="acai-price-positive">+'+fmt(banana.price_fils)+'</small></label>'
+  +'</div></fieldset>':'';
+ area.innerHTML=(peanut.length?'<strong>إضافات المنتج</strong>'+normalChoices:'')+bananaChoices;
  area.querySelectorAll('input').forEach(input=>{
   input.addEventListener('change',updateInvoiceProductSubtotal);
   input.addEventListener('input',updateInvoiceProductSubtotal);

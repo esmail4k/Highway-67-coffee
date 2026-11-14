@@ -259,6 +259,7 @@
     ['الكمية','Quantity'],
     ['الكمية:','Quantity:']
   ].forEach(function(x){pair(x[0],x[1]);});
+  [["إكسترا زبدة الفول السوداني","Extra Peanut Butter"],["موز","Banana"],["تبى موز مع الأساي؟","Add banana to your acai?"],["مع موز","With banana"],["بدون موز","Without banana"],["بدون رسوم","No extra charge"],["زبدة الفول السوداني","Peanut butter"],["اختر الأساي بالطريقة اللي تحبها","Customize your acai"],["إضافات الأساي فقط زبدة الفول السوداني أو الموز، بسعر درهمين لكل إضافة","Acai extras can only be extra peanut butter or banana, at AED 2 each"]].forEach(function(x){pair(x[0],x[1]);});
   function convertName(value, dest) {
     var s = String(value || '');
     return (dest === 'en' ? arToEn : enToAr).get(s) || s;

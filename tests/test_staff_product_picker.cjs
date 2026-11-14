@@ -25,8 +25,8 @@ let order={
 };
 const acai={
  id:'acai_smoothie',name:'سموذي أساي',category:'Cold Drinks',
- available:1,price_fils:2500,final_price_fils:1500,image:'acai-original-white.jpg',
- addons:[{id:9,name:'إكسترا بينات',price_fils:200,max_qty:1}]
+ available:1,price_fils:2000,final_price_fils:1500,image:'acai-original-white.jpg',
+ addons:[{id:9,name:'إكسترا زبدة الفول السوداني',price_fils:200,max_qty:1},{id:10,name:'موز',price_fils:200,max_qty:1}]
 };
 window.fetch=async function(path,options={}){
  const method=options.method||'GET';
@@ -49,11 +49,11 @@ window.fetch=async function(path,options={}){
  else if(path==='/api/products')data={products:[acai],promotions:[]};
  else if(path==='/api/staff/orders/17/items/add'&&method==='POST'){
   const body=JSON.parse(options.body);
-  const addOnCost=(body.addons||[]).reduce((n,x)=>n+(x.id===9?200*x.qty:0),0);
+  const addOnCost=(body.addons||[]).reduce((n,x)=>n+([9,10].includes(x.id)?200*x.qty:0),0);
   const price=1500+addOnCost;
   order.items.push({id:2,product_id:body.product_id,name:acai.name,
-   image:acai.image,qty:body.qty,price_fils:price,original_fils:2500,
-   syrup:'',item_note:'',addons:[{id:9,name:'إكسترا بينات',qty:1,price_fils:200}]});
+   image:acai.image,qty:body.qty,price_fils:price,original_fils:2000,
+   syrup:'',item_note:'',addons:[{id:9,name:'إكسترا زبدة الفول السوداني',qty:1,price_fils:200},{id:10,name:'موز',qty:1,price_fils:200}]});
   order.total_fils+=price*body.qty;
   data={ok:true,total_fils:order.total_fils};
  }else{status=404;data={error:'Unexpected test API route: '+method+' '+path}};
@@ -102,18 +102,21 @@ async function main(){
  assert.ok(peanut,'Owner-defined product extras should be shown');
  peanut.checked=true;
  peanut.dispatchEvent(new window.Event('change',{bubbles:true}));
- assert.match(document.getElementById('addItemSubtotal').textContent,/34 AED/);
+ const banana=document.querySelector('input[type="radio"][name="invoiceBanana"][data-invoice-addon="10"]');
+ assert.ok(banana,'Banana must be selectable as Yes/No for acai');
+ banana.click();
+ assert.match(document.getElementById('addItemSubtotal').textContent,/38 AED/);
  document.getElementById('addItemForm').dispatchEvent(
   new window.Event('submit',{bubbles:true,cancelable:true})
  );
  await waitUntil(()=>requests.some(r=>r.path==='/api/staff/orders/17/items/add'));
  const sent=requests.find(r=>r.path==='/api/staff/orders/17/items/add');
  assert.deepEqual(JSON.parse(JSON.stringify(sent.body)),{
-  product_id:'acai_smoothie',qty:2,addons:[{id:9,qty:1}]
+  product_id:'acai_smoothie',qty:2,addons:[{id:9,qty:1},{id:10,qty:1}]
  });
  await waitUntil(()=>document.getElementById('addItemModal').classList.contains('show')===false);
- await waitUntil(()=>document.querySelector('#orders .billtotal')?.textContent.includes('44 AED'));
- assert.equal(order.total_fils,4400);
+ await waitUntil(()=>document.querySelector('#orders .billtotal')?.textContent.includes('48 AED'));
+ assert.equal(order.total_fils,4800);
  // Cancel should NEVER send a request after choosing No.
  let cancel=document.querySelector('[data-delete-staff-order="17"]');
  assert.ok(cancel);
