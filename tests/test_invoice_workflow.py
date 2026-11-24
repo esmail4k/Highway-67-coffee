@@ -486,4 +486,24 @@ class InvoiceWorkflowTest(unittest.TestCase):
         self.assertEqual(order['notes'],'Will collect with pickup number')
         self.assertEqual(order['total_fils'],2400)
 
+
+    def test_smurfs_cake_original_photo_price_and_category(self):
+        import hashlib
+        code,menu=self.request(self.customer,'GET','/api/products')
+        self.assertEqual(code,200,menu)
+        matches=[p for p in menu['products'] if p['name']=='كيكة السنافر']
+        self.assertEqual(len(matches),1,'Cake must appear once, not as a duplicate')
+        cake=matches[0]
+        self.assertEqual(cake['category'],'Desserts')
+        self.assertEqual(cake['price_fils'],1699)
+        self.assertEqual(cake['final_price_fils'],1699)
+        self.assertEqual(cake['image'],'smurfs-cake.png')
+        self.assertEqual(cake['available'],1)
+        with self.customer.open(self.base+'/assets/smurfs-cake.png',timeout=10) as response:
+            self.assertEqual(response.status,200)
+            self.assertEqual(response.headers.get_content_type(),'image/png')
+            served=response.read()
+        uploaded=(ROOT/'static'/'assets'/'smurfs-cake.png').read_bytes()
+        self.assertEqual(hashlib.sha256(served).digest(),hashlib.sha256(uploaded).digest())
+
 if __name__=='__main__':unittest.main()
