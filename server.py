@@ -257,6 +257,25 @@ def init():
                     d.execute("INSERT INTO product_addons(product_id,name,price_fils,max_qty,enabled) VALUES(?,?,?,?,1)",
                               ('acai_smoothie',name,200,1))
             d.execute('INSERT INTO site_migrations(key) VALUES(?)',(acai_options_key,))
+        # Add the owner's photographed Smurfs Cake to the public Desserts menu once.
+        # Reuse an existing cake with the same name instead of showing a duplicate.
+        cake_key='smurfs_cake_photo_1699_2026_11_24'
+        if not d.execute('SELECT 1 FROM site_migrations WHERE key=?',(cake_key,)).fetchone():
+            existing=d.execute("""SELECT id FROM products
+                WHERE id='smurfs_cake' OR name IN ('كيكة السنافر','كيك السنافر')
+                ORDER BY (id='smurfs_cake') DESC LIMIT 1""").fetchone()
+            if existing:
+                d.execute("""UPDATE products
+                    SET name=?,category=?,price_fils=?,image=?,available=1,
+                        discount_percent=0,promo_only=0
+                    WHERE id=?""",
+                    ('كيكة السنافر','Desserts',1699,'smurfs-cake.png',existing['id']))
+            else:
+                d.execute("""INSERT INTO products
+                    (id,name,category,price_fils,image,available,discount_percent,promo_only)
+                    VALUES(?,?,?,?,?,1,0,0)""",
+                    ('smurfs_cake','كيكة السنافر','Desserts',1699,'smurfs-cake.png'))
+            d.execute('INSERT INTO site_migrations(key) VALUES(?)',(cake_key,))
         # DSI begins as unavailable until the owner supplies a price.
         d.execute("INSERT OR IGNORE INTO products(id,name,category,price_fils,image,available) VALUES(?,?,?,?,?,0)",
                   ('dsi','DSI','Other',0,'iced.webp'))
